@@ -41,7 +41,7 @@ func (r FastRand) Get() *[]byte {
 }
 
 func spawnServer(port uint16) error {
-	runtime := "10s"
+	//runtime := "10s"
 
 	conn, err := appnet.ListenPort(port)
 	if err != nil {
@@ -50,11 +50,11 @@ func spawnServer(port uint16) error {
 
 	recv := make([]byte, 2500)
 	start := time.Now()
-	duration, err := time.ParseDuration(runtime)
-	if err != nil {
-		return err
-	}
-	end := start.Add(duration)
+	// duration, err := time.ParseDuration(runtime)
+	// if err != nil {
+	// 	return err
+	// }
+	//end := start.Add(duration)
 	bytes_recvd := 0
 	//... handling logic, fetch individual packet
 	for {
@@ -70,7 +70,10 @@ func spawnServer(port uint16) error {
 
 		bytes_recvd += resp_length
 
-		if time.Until(end) <= 0 {
+		// if time.Until(end) <= 0 {
+		// 	break
+		// }
+		if bytes_recvd >= 134217728 {
 			break
 		}
 	}
@@ -82,16 +85,43 @@ func spawnServer(port uint16) error {
 	return nillyboii
 }
 
+func serveTest(port uint16) {
+	conn, err := appnet.ListenPort(port)
+	if err != nil {
+		fmt.Println("cannot open port: ", port)
+	}
+
+	rcv := make([]byte, 2)
+	_, _, err = conn.ReadFrom(rcv)
+	if err != nil {
+		return
+	}
+	testPort := binary.BigEndian.Uint16(rcv)
+	err = spawnServer(testPort)
+	if err != nil {
+		fmt.Println("Could not perform speed test")
+	}
+}
+
 func connectTest(serverAddrStr string) {
 	serverCCAddr, err := appnet.ResolveUDPAddr(serverAddrStr)
 	if err != nil {
+		// Example scion address: 16-ffaa:0:1001,[172.31.0.23]:30100
 		fmt.Printf("%s%s", "Resolution of UDP address failed, to: ", serverAddrStr)
 	}
 
-	var metric int
+	//TODO: Select fitting metric
+	// Defined in appnet
+	// const (
+	//         PathAlgoDefault = iota // default algorithm
+	//         MTU                    // metric for path with biggest MTU
+	//         Shortest               // metric for shortest path
+	// )
+	var metric = 0 // Default
+
 	path, err := appnet.ChoosePathByMetric(metric, serverCCAddr.IA)
 	if err != nil {
-		fmt.Println("Cannot choose selected path")
+		fmt.Println("Cannot choose path with metric")
 	}
 	if path != nil {
 		// Set selected singular path
@@ -107,11 +137,16 @@ func connectTest(serverAddrStr string) {
 	serverDCAddr := serverCCAddr.Copy()
 	serverDCAddr.Host.Port = serverCCAddr.Host.Port + 1
 
+	// Tell the server which port to use
+	buf := make([]byte, 2)
+	binary.BigEndian.PutUint16(buf, uint16(serverDCAddr.Host.Port))
+	CCConn.Write(buf)
+
 	// Create specific data connection to server
 	DCConn, err := appnet.DefNetwork().Dial(context.TODO(), "udp", clientDCAddr, serverDCAddr, addr.SvcNone)
 	//TODO: Send Data on Data Connection And init measurement
-	rand := NewFastRand(8)
-	for {
+	rand := NewFastRand(2500)
+	for k := 0; k<=134217728/2500; k++ {
 		DCConn.Write(*rand.Get())
 	}
 }
