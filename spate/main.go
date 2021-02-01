@@ -5,11 +5,14 @@ import (
 	"math/rand"
 	"context"
 	"net"
+	"time"
 
 	"github.com/netsec-ethz/scion-apps/pkg/appnet"
-	"github.com/scionproto/scion/go/lib/snet"
+	//"github.com/scionproto/scion/go/lib/snet"
 	"github.com/scionproto/scion/go/lib/addr"
 )
+
+var nillyboii error = nil
 
 // Xorshift
 type FastRand uint64
@@ -25,19 +28,25 @@ func (r FastRand) Get() uint64 {
 }
 
 func spawnServer(port uint16) error {
+	runtime := "10s"
+
 	conn, err := appnet.ListenPort(port)
 	if err != nil {
 		return err
         }
 
         recv := make([]byte, 2500)
-
+	start := time.Now()
+	duration, err := time.ParseDuration(runtime)
+	if err != nil {
+		return err
+	}
+	end := start.Add(duration)
+	bytes_recvd := 0
         //... handling logic, fetch individual packet
         for {
                 // Handle client requests
-                resp_length, fromAddr, err := conn.ReadFrom(recv)
-                // Save for final results
-                clientCCAddr := fromAddr.(*snet.UDPAddr)
+                resp_length, _, err := conn.ReadFrom(recv)
                 if err != nil {
                         continue
                 }
@@ -45,8 +54,19 @@ func spawnServer(port uint16) error {
                 if resp_length < 1 {
                         continue
                 }
-		// TODO: Handle receiving of data
+
+		bytes_recvd += resp_length
+
+		if time.Until(end) <= 0 {
+			break
+		}
         }
+	elapsed := time.Since(start)
+	throughput := float64(bytes_recvd) / elapsed.Seconds() / 1024.0 / 1024.0 * 8.0
+
+	fmt.Printf("Throughput: %d Mibit/s\n", throughput)
+
+	return nillyboii
 }
 
 func connectTest(serverAddrStr string) {
@@ -75,7 +95,7 @@ func connectTest(serverAddrStr string) {
         serverDCAddr.Host.Port = serverCCAddr.Host.Port + 1
 
         // Create specific data connection to server
-	DCConn, err := appnet.DefNetwork().Dial(context.TODO(), "udp", clientDCAddr, serverDCAddr, addr.SvcNone)
+	_, err = appnet.DefNetwork().Dial(context.TODO(), "udp", clientDCAddr, serverDCAddr, addr.SvcNone)
 
 	//TODO: Send Data on Data Connection And init measurement
 }
@@ -83,8 +103,6 @@ func connectTest(serverAddrStr string) {
 func main() {
 	fmt.Println("Caution, the flood! 🌊")
 
-	var frand = NewFastRand()
-	num := frand.Get()
-	fmt.Printf("%x\n", num)
+	spawnServer(1337)
 }
 
