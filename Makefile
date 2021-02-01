@@ -91,6 +91,10 @@ scion-sshd:
 scion-webapp:
 	go build -tags=$(TAGS) -o $(BIN)/$@ ./webapp/
 
+.PHONY: scion-spate
+scion-spate:
+	go build -tags=$(TAGS) -o $(BIN)/$@ ./spate/
+
 .PHONY: example-helloworld
 example-helloworld:
 	go build -tags=$(TAGS) -o $(BIN)/$@ ./_examples/helloworld/
