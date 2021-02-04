@@ -48,7 +48,7 @@ func (s SpateServerSpawner) Spawn() error {
 	recvbuf := make([]byte, 2500)
 	_, err = conn.Read(recvbuf)
 	if err != nil {
-		Warn("An error occurred while waiting for incoming packets: %s", err)
+		Error("An error occurred while waiting for incoming packets: %s", err)
 		return err
 	}
 	Info("Connection established, receiving packets from client for %s...", s.runtime_duration)
