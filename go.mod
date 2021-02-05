@@ -20,4 +20,4 @@ require (
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 )
 
-replace github.com/scionproto/scion => github.com/martenwallewein/scion
+replace github.com/scionproto/scion => /home/marten/go/src/github.com/martenwallewein/scion

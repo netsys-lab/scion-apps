@@ -128,6 +128,53 @@ func DialAddr(raddr *snet.UDPAddr) (*snet.Conn, error) {
 // listen on a wildcard address.
 //
 // See note on wildcard addresses in the package documentation.
+func ListenUDP(listen *net.UDPAddr) (*snet.Conn, error) {
+	if listen == nil {
+		listen = &net.UDPAddr{}
+	}
+	if listen.IP == nil || listen.IP.IsUnspecified() {
+		localIP, err := defaultLocalIP()
+		if err != nil {
+			return nil, err
+		}
+		listen = &net.UDPAddr{IP: localIP, Port: listen.Port, Zone: listen.Zone}
+	}
+	defNetwork := DefNetwork()
+	integrationEnv, _ := os.LookupEnv("SCION_GO_INTEGRATION")
+	if integrationEnv == "1" || integrationEnv == "true" || integrationEnv == "TRUE" {
+		fmt.Printf("Listening ia=:%v\n", defNetwork.IA)
+	}
+	// return defNetwork.ListenUDP(context.Background(), "udp", listen, addr.SvcNone)
+	return defNetwork.ListenUDP(context.Background(), "udp", listen, addr.SvcNone)
+}
+
+// DialAddr connects to the address (on the SCION/UDP network).
+//
+// If no path is specified in raddr, DialAddr will choose the first available path.
+// This path is never updated during the lifetime of the conn. This does not
+// support long lived connections well, as the path *will* expire.
+// This is all that snet currently provides, we'll need to add a layer on top
+// that updates the paths in case they expire or are revoked.
+func DialAddrUDP(raddr *snet.UDPAddr) (*snet.Conn, error) {
+	if raddr.Path.IsEmpty() {
+		err := SetDefaultPath(raddr)
+		if err != nil {
+			return nil, err
+		}
+	}
+	localIP, err := resolveLocal(raddr)
+	if err != nil {
+		return nil, err
+	}
+	laddr := &net.UDPAddr{IP: localIP}
+	return DefNetwork().DialUDP(context.Background(), "udp", laddr, raddr, addr.SvcNone)
+}
+
+// Listen acts like net.ListenUDP in a SCION network.
+// The listen address or parts of it may be nil or unspecified, signifying to
+// listen on a wildcard address.
+//
+// See note on wildcard addresses in the package documentation.
 func Listen(listen *net.UDPAddr) (*snet.Conn, error) {
 	if listen == nil {
 		listen = &net.UDPAddr{}
@@ -144,7 +191,8 @@ func Listen(listen *net.UDPAddr) (*snet.Conn, error) {
 	if integrationEnv == "1" || integrationEnv == "true" || integrationEnv == "TRUE" {
 		fmt.Printf("Listening ia=:%v\n", defNetwork.IA)
 	}
-	return defNetwork.ListenUDP(context.Background(), "udp", listen, addr.SvcNone)
+	// return defNetwork.ListenUDP(context.Background(), "udp", listen, addr.SvcNone)
+	return defNetwork.Listen(context.Background(), "udp", listen, addr.SvcNone)
 }
 
 // ListenPort is a shortcut to Listen on a specific port with a wildcard IP address.
