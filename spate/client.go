@@ -53,6 +53,7 @@ func (s SpateClientSpawner) Spawn() error {
 	}
 	if path != nil {
 		// Set selected singular path
+		// TODO: select multiple paths
 		Info("Choosing the following path: %v", path)
 		appnet.SetPath(serverAddr, path)
 	}
@@ -62,6 +63,7 @@ func (s SpateClientSpawner) Spawn() error {
 	rand := NewFastRand(uint64(s.packet_size))
 	start := time.Now()
 	Info("Starting sending data for measurements")
+	// TODO: add optional bandwidth control via command line option
 	for {
 		_, err = DCConn.Write(*rand.Get())
 		if err != nil {

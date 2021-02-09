@@ -45,7 +45,7 @@ func (s SpateServerSpawner) Spawn() error {
 	}
 
 	// Wait for first packet
-	recvbuf := make([]byte, 2500)
+	recvbuf := make([]byte, s.packet_size)
 	_, err = conn.Read(recvbuf)
 	if err != nil {
 		Error("An error occurred while waiting for incoming packets: %s", err)
