@@ -73,6 +73,12 @@ func main() {
 						Usage:       "the size of the packets in byte sent to the server",
 						DefaultText: "1208",
 					},
+					&cli.BoolFlag{
+						Name:        "single-path",
+						Aliases:     []string{"1"},
+						Usage:       "use single-path transmission instead of multi-path",
+						DefaultText: "false",
+					},
 				},
 				Action: func(c *cli.Context) error {
 					if c.Args().Present() {
@@ -82,6 +88,10 @@ func main() {
 					var clientSpawner = NewSpateClientSpawner(c.String("server-address"))
 					if c.IsSet("packet-size") {
 						clientSpawner = clientSpawner.PacketSize(c.Int("packet-size"))
+					}
+
+					if c.IsSet("single-path") {
+						clientSpawner = clientSpawner.SinglePath(c.Bool("single-path"))
 					}
 
 					clientSpawner.Spawn()
