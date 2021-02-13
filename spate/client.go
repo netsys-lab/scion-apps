@@ -96,6 +96,9 @@ func (s SpateClientSpawner) Spawn() error {
 		go workerThread(conn, counter, s)
 	}
 
+
+	closed_conn := 0
+	total_conn := len(conns)
 runner:
 	for {
 		select {
@@ -106,8 +109,11 @@ runner:
 			Info("Received interrupt signal, stopping flooding of available paths...")
 			break runner
 		case <-complete:
-			Info("Measurements finished on server!")
-			break runner
+			closed_conn +=1
+			if closed_conn >= total_conn {
+				Info("Measurements finished on server!")
+				break runner
+			}
 		}
 	}
 
@@ -143,11 +149,11 @@ func awaitCompletion(conn *snet.Conn, complete chan struct{}) {
 		_, err := conn.Read(buf)
 		if err != nil {
 			Error("Waiting for completion of measurement failed: %v", err)
-			close(complete)
+			complete <- struct{}{}
 			break
 		}
 		if string(buf) == "stop" {
-			close(complete)
+			complete <- struct{}{}
 			break
 		}
 	}
