@@ -4,7 +4,7 @@ import (
 	"os"
 	"os/signal"
 	"time"
-	"fmt"
+	//"fmt"
 
 	"github.com/fatih/color"
 	"github.com/netsec-ethz/scion-apps/pkg/appnet"
@@ -145,7 +145,7 @@ runner:
 	return nil
 }
 
-type CSVPoint struct {
+/*type CSVPoint struct {
 	Mibps float64
 }
 
@@ -160,11 +160,11 @@ func csv(data chan CSVPoint) {
 	for item := range data {
 		f.WriteString(fmt.Sprintf("%v\n", item.Mibps))
 	}
-}
+}*/
 
 func workerThread(conn *snet.Conn, counter chan int, spawner SpateClientSpawner) {
-	data := make(chan CSVPoint)
-	go csv(data)
+	//data := make(chan CSVPoint)
+	//go csv(data)
 
 	rand := NewFastRand(uint64(spawner.packet_size))
 	target_KiBps := float64(spawner.bandwidth) / 8.0 / 1024.0
@@ -184,7 +184,8 @@ func workerThread(conn *snet.Conn, counter chan int, spawner SpateClientSpawner)
 
 		KiBps := (float64(sent_bytes) / 1024.0) / time.Since(prev_time).Seconds()
 		prev_time = time.Now()
-		data <- CSVPoint{Mibps: KiBps * 8.0 / 1024.0}
+		// this is not in production as it costs ~80% of performance
+		//data <- CSVPoint{Mibps: KiBps * 8.0 / 1024.0}
 
 		// only do bandwidth control if target bps is specified
 		if target_KiBps > 0 {
@@ -202,7 +203,7 @@ func workerThread(conn *snet.Conn, counter chan int, spawner SpateClientSpawner)
 		counter <- sent_bytes
 	}
 
-	close(data)
+	//close(data)
 }
 
 func awaitCompletion(conn *snet.Conn, complete chan struct{}) {
