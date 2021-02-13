@@ -10,6 +10,7 @@ from dash.dependencies import Input, Output
 
 app = dash.Dash()
 app.layout = html.Div([
+    html.Div(id='live-bandwidth'),
     dcc.Graph(id='live-figure'),
     dcc.Interval(
         id='interval-component',
@@ -17,6 +18,12 @@ app.layout = html.Div([
         n_intervals=0
     )
 ])
+
+@app.callback(Output('live-bandwidth', 'children'),
+              Input('interval-component', 'n_intervals'))
+def update_metrics(n):
+    bandwidth = pd.read_csv("pid.csv")['Mibps'].mean()
+    return [html.Span('Bandwidth: {0:f} Mib/s'.format(bandwidth))]
 
 @app.callback(Output('live-figure', 'figure'),
               Input('interval-component', 'n_intervals'))
