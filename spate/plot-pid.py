@@ -22,13 +22,13 @@ app.layout = html.Div([
 @app.callback(Output('live-bandwidth', 'children'),
               Input('interval-component', 'n_intervals'))
 def update_metrics(n):
-    bandwidth = pd.read_csv("pid.csv")['Mibps'].mean()
+    bandwidth = pd.read_csv("spate/pid.csv")['Mibps'].mean()
     return [html.Span('Bandwidth: {0:f} Mib/s'.format(bandwidth))]
 
 @app.callback(Output('live-figure', 'figure'),
               Input('interval-component', 'n_intervals'))
 def updage_figure(n):
-    df = pd.read_csv("pid.csv")
+    df = pd.read_csv("spate/pid.csv")
     fig = px.line(df, y = 'Mibps')
 
     return fig
