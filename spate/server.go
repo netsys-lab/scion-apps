@@ -1,13 +1,13 @@
 package main
 
 import (
-	"time"
 	"net"
 	"os"
 	"os/signal"
+	"time"
 
-	"github.com/netsec-ethz/scion-apps/pkg/appnet"
 	"github.com/fatih/color"
+	"github.com/netsec-ethz/scion-apps/pkg/appnet"
 )
 
 type SpateServerSpawner struct {
@@ -66,7 +66,8 @@ func (s SpateServerSpawner) Spawn() error {
 	end := start.Add(s.runtime_duration)
 
 	//... handling logic, fetch individual packet
-	runner: for {
+runner:
+	for {
 		// Handle client requests
 		resp_length, err := conn.Read(recvbuf)
 		if err != nil {
@@ -104,6 +105,10 @@ func (s SpateServerSpawner) Spawn() error {
 	remote_addrs := make(map[net.Addr]bool)
 	timeout_duration, _ := time.ParseDuration("100ms")
 	timeout := time.Now().Add(timeout_duration)
+	// This loop will receive packets for an additional 100ms to gather all
+	// the clients which must be notified of the finished measurements.
+	// This is not done in the above runner as the map operations below cost
+	// ~40Mibit/s.
 	for {
 		_, addr, _ := conn.ReadFrom(recvbuf)
 		remote_addrs[addr] = true
@@ -118,7 +123,7 @@ func (s SpateServerSpawner) Spawn() error {
 	heading := color.New(color.Bold, color.Underline).Sprint("Measurement Results")
 	deco := color.New(color.Bold).Sprint("=====")
 	Info("    %s %s %s", deco, heading, deco)
-	Info("     Received data: %v KiB", bytes_received / 1024.0)
+	Info("     Received data: %v KiB", bytes_received/1024.0)
 	Info("  Received packets: %v packets", packets_received)
 	Info("       Packet size: %v B", s.packet_size)
 	Info("          Duration: %s", elapsed)
