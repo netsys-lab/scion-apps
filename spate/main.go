@@ -94,7 +94,7 @@ func main() {
 						Name:        "target-bandwidth",
 						Aliases:     []string{"b"},
 						Usage:       "the target bandwidth limit for this\n\t\tclient in bit or byte per second (b/s\n\t\tB/s) and optional IEC (1024) {Ki,Mi,Gi}\n\t\tor metric (1000) {K,M,G} prefixes\n\texamples: 100B/s 1MiB/s 10Kib/s 1GB/s\n\t\t0.5Mb/s",
-						DefaultText: "no limit",
+						DefaultText: "no limit or 0bps",
 					},
 				},
 				Action: func(c *cli.Context) error {
@@ -112,13 +112,12 @@ func main() {
 					}
 
 					if c.IsSet("target-bandwidth") {
-						bits, err := ParseBits(c.String("target-bandwidth"))
+						bps, err := ParseBitsPerSecond(c.String("target-bandwidth"))
 						if err != nil {
 							Error("Could not parse given bandwidth string: %v", err)
 							os.Exit(1)
 						}
-						Info("Using %d bits per second", bits)
-						clientSpawner = clientSpawner.Bandwidth(bits)
+						clientSpawner = clientSpawner.Bandwidth(bps)
 					}
 
 					clientSpawner.Spawn()

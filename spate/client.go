@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/signal"
 	"time"
+	"fmt"
 
 	"github.com/fatih/color"
 	"github.com/netsec-ethz/scion-apps/pkg/appnet"
@@ -137,17 +138,64 @@ runner:
 	return nil
 }
 
+type CSVPoint struct {
+	Mibps float64
+}
+
+func csv(data chan CSVPoint) {
+	f, err := os.OpenFile("pid.csv", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		Error("Failed to create pid.csv: %v", err)
+	}
+	defer f.Close()
+	f.WriteString("Mibps\n")
+
+	for item := range data {
+		f.WriteString(fmt.Sprintf("%v\n", item.Mibps))
+	}
+}
+
 func workerThread(conn *snet.Conn, counter chan int, spawner SpateClientSpawner) {
+	data := make(chan CSVPoint)
+	go csv(data)
+
 	rand := NewFastRand(uint64(spawner.packet_size))
-	// TODO: add optional bandwidth control via command line option
+	target_KiBps := float64(spawner.bandwidth) / 8.0 / 1024.0
+	prev_time := time.Now()
+	esum := 0.0
+	eold := 0.0
+	Kp := 1.0
+	Ki := 0.0
+	Kd := 0.0
+
 	for {
 		sent_bytes, err := conn.Write(*rand.Get())
 		if err != nil {
 			Error("Sending data failed: %v", err)
 			break
 		}
+
+		// only do bandwidth control if target bps is specified
+		if target_KiBps > 0 {
+			// PID controller
+			Ta := float64(time.Since(prev_time).Microseconds())
+			KiBps := (float64(sent_bytes) / 1024.0) / time.Since(prev_time).Seconds()
+			prev_time = time.Now()
+			e := KiBps - target_KiBps
+			esum += e
+			y := (Kp * e) + (Ki * Ta * esum) + (Kd * (e - eold) / Ta)
+			eold = e
+
+			data <- CSVPoint{Mibps: KiBps * 8.0 / 1024.0}
+			if y > 0 {
+				time.Sleep(time.Duration(y * float64(time.Microsecond)))
+			}
+		}
+
 		counter <- sent_bytes
 	}
+
+	close(data)
 }
 
 func awaitCompletion(conn *snet.Conn, complete chan struct{}) {
