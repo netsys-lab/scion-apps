@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/alecthomas/units"
+	"strings"
 )
 
 var (
@@ -12,6 +13,7 @@ var (
 )
 
 func ParseBits(s string) (int64, error) {
+	s = strings.TrimSpace(s)
 	n, err := units.ParseUnit(s, bytesUnitMap)
 	if err == nil {
 		n *= 8

@@ -111,6 +111,16 @@ func main() {
 						clientSpawner = clientSpawner.SinglePath(c.Bool("single-path"))
 					}
 
+					if c.IsSet("target-bandwidth") {
+						bits, err := ParseBits(c.String("target-bandwidth"))
+						if err != nil {
+							Error("Could not parse given bandwidth string: %v", err)
+							os.Exit(1)
+						}
+						Info("Using %d bits per second", bits)
+						clientSpawner = clientSpawner.Bandwidth(bits)
+					}
+
 					clientSpawner.Spawn()
 
 					return nil

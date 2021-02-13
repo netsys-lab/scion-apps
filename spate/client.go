@@ -14,6 +14,7 @@ type SpateClientSpawner struct {
 	server_address string
 	packet_size    int
 	single_path    bool
+	bandwidth      int64
 }
 
 // e.g. NewSpateClientSpawner("16-ffaa:0:1001,[172.31.0.23]:1337")
@@ -22,6 +23,7 @@ func NewSpateClientSpawner(server_address string) SpateClientSpawner {
 		server_address: server_address,
 		packet_size:    1208,
 		single_path:    false,
+		bandwidth:	0,
 	}
 }
 
@@ -37,6 +39,11 @@ func (s SpateClientSpawner) PacketSize(packet_size int) SpateClientSpawner {
 
 func (s SpateClientSpawner) SinglePath(single_path bool) SpateClientSpawner {
 	s.single_path = single_path
+	return s
+}
+
+func (s SpateClientSpawner) Bandwidth(bandwidth int64) SpateClientSpawner {
+	s.bandwidth = bandwidth
 	return s
 }
 
