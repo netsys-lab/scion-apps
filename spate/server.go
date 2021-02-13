@@ -122,12 +122,14 @@ runner:
 
 	heading := color.New(color.Bold, color.Underline).Sprint("Measurement Results")
 	deco := color.New(color.Bold).Sprint("=====")
+	lower := color.New(color.Bold).Sprint("===============================")
 	Info("    %s %s %s", deco, heading, deco)
 	Info("     Received data: %v KiB", bytes_received/1024.0)
 	Info("  Received packets: %v packets", packets_received)
 	Info("       Packet size: %v B", s.packet_size)
 	Info("          Duration: %s", elapsed)
 	Info("        Throughput: %v Mib/s", throughput)
+	Info("    %s", lower)
 
 	return nil
 }

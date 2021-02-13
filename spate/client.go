@@ -126,14 +126,21 @@ runner:
 	}
 
 	elapsed := time.Since(start)
+	actual_bandwidth := float64(bytes_sent) / elapsed.Seconds() * 8.0 / 1024.0 / 1024.0
 
 	heading := color.New(color.Bold, color.Underline).Sprint("Summary")
 	deco := color.New(color.Bold).Sprint("=====")
-	Info("      %s %s %s", deco, heading, deco)
-	Info("     Sent data: %v KiB", bytes_sent/1024.0)
-	Info("  Sent packets: %v packets", packets_sent)
-	Info("   Packet size: %v B", s.packet_size)
-	Info("      Duration: %s", elapsed)
+	lower := color.New(color.Bold).Sprint("===================")
+	Info("         %s %s %s", deco, heading, deco)
+	Info("         Sent data: %v KiB", bytes_sent/1024.0)
+	Info("      Sent packets: %v packets", packets_sent)
+	Info("       Packet size: %v B", s.packet_size)
+	Info("          Duration: %s", elapsed)
+	Info("  Target bandwidth: %v Mib/s", float64(s.bandwidth) / 8.0 / 1024.0 / 1024.0)
+	Info("  Actual bandwidth: %v Mib/s", actual_bandwidth)
+	Info("         %s", lower)
+	Info(">>> Please check the server measurements for the throughput achieved through")
+	Info(">>> the network!")
 
 	return nil
 }
@@ -165,7 +172,7 @@ func workerThread(conn *snet.Conn, counter chan int, spawner SpateClientSpawner)
 	esum := 0.0
 	eold := 0.0
 	Kp := 1.0
-	Ki := 1.0
+	Ki := 2.0
 	Kd := 1.0
 
 	for {
