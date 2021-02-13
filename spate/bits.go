@@ -1,8 +1,10 @@
 package main
 
 import (
-	"github.com/alecthomas/units"
 	"strings"
+	"errors"
+
+	"github.com/alecthomas/units"
 )
 
 var (
@@ -12,8 +14,14 @@ var (
 	metricBitsUnitMap = units.MakeUnitMap("b", "b", 1000)
 )
 
-func ParseBits(s string) (int64, error) {
+func ParseBitsPerSecond(s string) (int64, error) {
 	s = strings.TrimSpace(s)
+	if strings.HasSuffix(s, "/s") || strings.HasSuffix(s, "ps") {
+		s = s[:len(s) - 2]
+	} else {
+		return 0, errors.New("Invalid denominator in unit: must be '/s' or 'ps' like in 'KB/s' or 'KBps'")
+	}
+
 	n, err := units.ParseUnit(s, bytesUnitMap)
 	if err == nil {
 		n *= 8

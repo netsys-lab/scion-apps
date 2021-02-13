@@ -127,7 +127,7 @@ runner:
 	Info("  Received packets: %v packets", packets_received)
 	Info("       Packet size: %v B", s.packet_size)
 	Info("          Duration: %s", elapsed)
-	Info("        Throughput: %v Mibit/s", throughput)
+	Info("        Throughput: %v Mib/s", throughput)
 
 	return nil
 }
