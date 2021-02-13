@@ -150,9 +150,9 @@ type CSVPoint struct {
 }
 
 func csv(data chan CSVPoint) {
-	f, err := os.OpenFile("pid.csv", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	f, err := os.OpenFile("spate/pid.csv", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
-		Error("Failed to create pid.csv: %v", err)
+		Error("Failed to create spate/pid.csv: %v", err)
 	}
 	defer f.Close()
 	f.WriteString("Mibps\n")
@@ -171,9 +171,9 @@ func workerThread(conn *snet.Conn, counter chan int, spawner SpateClientSpawner)
 	prev_time := time.Now()
 	esum := 0.0
 	eold := 0.0
-	Kp := 1.0
-	Ki := 2.0
-	Kd := 1.0
+	Kp := 0.2
+	Ki := 0.4
+	Kd := 0.1
 
 	for {
 		sent_bytes, err := conn.Write(*rand.Get())
@@ -182,17 +182,18 @@ func workerThread(conn *snet.Conn, counter chan int, spawner SpateClientSpawner)
 			break
 		}
 
+		KiBps := (float64(sent_bytes) / 1024.0) / time.Since(prev_time).Seconds()
+		prev_time = time.Now()
+		data <- CSVPoint{Mibps: KiBps * 8.0 / 1024.0}
+
 		// only do bandwidth control if target bps is specified
 		if target_KiBps > 0 {
 			// PID controller
-			KiBps := (float64(sent_bytes) / 1024.0) / time.Since(prev_time).Seconds()
-			prev_time = time.Now()
 			e := KiBps - target_KiBps
 			esum += e
 			y := (Kp * e) + (Ki * esum) + (Kd * (e - eold))
 			eold = e
 
-			data <- CSVPoint{Mibps: KiBps * 8.0 / 1024.0}
 			if y > 0 {
 				time.Sleep(time.Duration(y * float64(time.Microsecond)))
 			}
