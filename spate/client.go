@@ -136,7 +136,7 @@ runner:
 	Info("      Sent packets: %v packets", packets_sent)
 	Info("       Packet size: %v B", s.packet_size)
 	Info("          Duration: %s", elapsed)
-	Info("  Target bandwidth: %v Mib/s", float64(s.bandwidth) / 8.0 / 1024.0 / 1024.0)
+	Info("  Target bandwidth: %v Mib/s", float64(s.bandwidth) / 1024.0 / 1024.0)
 	Info("  Actual bandwidth: %v Mib/s", actual_bandwidth)
 	Info("         %s", lower)
 	Info(">>> Please check the server measurements for the throughput achieved through")
