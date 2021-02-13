@@ -7,6 +7,7 @@ import (
 
 	"github.com/netsec-ethz/scion-apps/pkg/appnet"
 	"github.com/scionproto/scion/go/lib/snet"
+	"github.com/fatih/color"
 )
 
 type SpateClientSpawner struct {
@@ -59,47 +60,97 @@ func (s SpateClientSpawner) Spawn() error {
 		paths = []snet.Path{nil}
 	}
 	if s.single_path {
-		// Use default path, if not defined further scion chooses the first available path
+		// Use first available path
 		Info("Using single path")
-		paths = []snet.Path{nil}
+		paths = paths[:1]
 	}
 	Info("Choosing the following paths: %v", paths)
 	Info("Establishing connections with server...")
+
+	bytes_sent := 0
+	packets_sent := 0
+	complete := make(chan struct{})
+	var conns []*snet.Conn
 	for _, path := range paths {
 		// Set selected singular path
-		Info("Creating new connection thread for available path")
+		Info("Creating new connection on path %v...", path)
 		appnet.SetPath(serverAddr, path)
-		conn, _ := appnet.DialAddr(serverAddr)
+		conn, err := appnet.DialAddr(serverAddr)
 		// Checking on err != nil will not work here as non-critical errors are returned
 		if conn != nil {
-			// Dial connection and spawn new thread
-			go workerThread(conn, s.packet_size)
+			go awaitCompletion(conn, complete)
+			conns = append(conns, conn)
+		} else {
+			Warn("Connection on path %v failed: %v", path, err)
 		}
 	}
-	Info("Starting sending data for measurements")
 
+	counter := make(chan int)
+	cancel := make(chan os.Signal, 1)
+	signal.Notify(cancel, os.Interrupt)
+
+	Info("Starting sending data for measurements...")
 	start := time.Now()
+	for _, conn := range conns {
+		// Spawn new thread
+		go workerThread(conn, counter, s)
+	}
 
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
-
-	_ = <-c
-	Info("Received interrupt signal, stopping flooding of available paths...")
+	runner: for counter != nil {
+		select {
+		case bytes, ok := <-counter:
+			bytes_sent += bytes
+			packets_sent += 1
+			if !ok {
+				counter = nil
+			}
+		case <-cancel:
+			Info("Received interrupt signal, stopping flooding of available paths...")
+			break runner
+		case <-complete:
+			Info("Measurements finished on server!")
+			break runner
+		}
+	}
 
 	elapsed := time.Since(start)
-	Info("Finished sending packets, operation took %s", elapsed)
-	os.Exit(0)
+
+	heading := color.New(color.Bold, color.Underline).Sprint("Summary")
+	deco := color.New(color.Bold).Sprint("=====")
+	Info("      %s %s %s", deco, heading, deco)
+	Info("     Sent data: %v KiB", bytes_sent / 1024.0)
+	Info("  Sent packets: %v packets", packets_sent)
+	Info("   Packet size: %v B", s.packet_size)
+	Info("      Duration: %s", elapsed)
 
 	return nil
 }
 
-func workerThread(conn *snet.Conn, pkt int) {
-	rand := NewFastRand(uint64(pkt))
+func workerThread(conn *snet.Conn, counter chan int, spawner SpateClientSpawner) {
+	rand := NewFastRand(uint64(spawner.packet_size))
 	// TODO: add optional bandwidth control via command line option
 	for {
-		_, err := conn.Write(*rand.Get())
+		sent_bytes, err := conn.Write(*rand.Get())
 		if err != nil {
-			Info("Sending data failed, assuming server finished measurements: %v", err)
+			Error("Sending data failed: %v", err)
+			break
+		}
+		counter <- sent_bytes
+	}
+	close(counter)
+}
+
+func awaitCompletion(conn *snet.Conn, complete chan struct{}) {
+	buf := make([]byte, 4)
+	for {
+		_, err := conn.Read(buf)
+		if err != nil {
+			Error("Waiting for completion of measurement failed: %v", err)
+			close(complete)
+			break
+		}
+		if string(buf) == "stop" {
+			close(complete)
 			break
 		}
 	}

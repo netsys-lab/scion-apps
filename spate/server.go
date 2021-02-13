@@ -2,8 +2,12 @@ package main
 
 import (
 	"time"
+	"net"
+	"os"
+	"os/signal"
 
 	"github.com/netsec-ethz/scion-apps/pkg/appnet"
+	"github.com/fatih/color"
 )
 
 type SpateServerSpawner struct {
@@ -53,12 +57,16 @@ func (s SpateServerSpawner) Spawn() error {
 	}
 	Info("Connection established, receiving packets from client for %s...", s.runtime_duration)
 
+	bytes_received := 0
+	packets_received := 0
+	cancel := make(chan os.Signal, 1)
+	signal.Notify(cancel, os.Interrupt)
+
 	start := time.Now()
 	end := start.Add(s.runtime_duration)
-	bytes_received := 0
 
 	//... handling logic, fetch individual packet
-	for {
+	runner: for {
 		// Handle client requests
 		resp_length, err := conn.Read(recvbuf)
 		if err != nil {
@@ -73,17 +81,48 @@ func (s SpateServerSpawner) Spawn() error {
 		}
 
 		bytes_received += resp_length
+		packets_received += 1
 
 		if time.Until(end) <= 0 {
-			break
+			break runner
+		}
+
+		select {
+		case <-cancel:
+			Info("Received interrupt signal, canceling measurements...")
+			break runner
+		default:
+			// nop
 		}
 	}
-	conn.Close()
-	Info("Finished receiving packets from client!")
+
+	Info("Measurements finished!")
 	elapsed := time.Since(start)
 	throughput := float64(bytes_received) / elapsed.Seconds() / 1024.0 / 1024.0 * 8.0
 
-	Info("Measured throughput: %f Mibit/s\n", throughput)
+	Info("Notifying clients to stop sending...")
+	remote_addrs := make(map[net.Addr]bool)
+	timeout_duration, _ := time.ParseDuration("100ms")
+	timeout := time.Now().Add(timeout_duration)
+	for {
+		_, addr, _ := conn.ReadFrom(recvbuf)
+		remote_addrs[addr] = true
+		if time.Until(timeout) <= 0 {
+			break
+		}
+	}
+	for addr := range remote_addrs {
+		conn.WriteTo([]byte("stop"), addr)
+	}
+
+	heading := color.New(color.Bold, color.Underline).Sprint("Measurement Results")
+	deco := color.New(color.Bold).Sprint("=====")
+	Info("    %s %s %s", deco, heading, deco)
+	Info("     Received data: %v KiB", bytes_received / 1024.0)
+	Info("  Received packets: %v packets", packets_received)
+	Info("       Packet size: %v B", s.packet_size)
+	Info("          Duration: %s", elapsed)
+	Info("        Throughput: %v Mibit/s", throughput)
 
 	return nil
 }
