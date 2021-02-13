@@ -1,13 +1,13 @@
 package main
 
 import (
-	"time"
 	"os"
 	"os/signal"
+	"time"
 
+	"github.com/fatih/color"
 	"github.com/netsec-ethz/scion-apps/pkg/appnet"
 	"github.com/scionproto/scion/go/lib/snet"
-	"github.com/fatih/color"
 )
 
 type SpateClientSpawner struct {
@@ -96,14 +96,12 @@ func (s SpateClientSpawner) Spawn() error {
 		go workerThread(conn, counter, s)
 	}
 
-	runner: for counter != nil {
+runner:
+	for {
 		select {
-		case bytes, ok := <-counter:
+		case bytes := <-counter:
 			bytes_sent += bytes
 			packets_sent += 1
-			if !ok {
-				counter = nil
-			}
 		case <-cancel:
 			Info("Received interrupt signal, stopping flooding of available paths...")
 			break runner
@@ -118,7 +116,7 @@ func (s SpateClientSpawner) Spawn() error {
 	heading := color.New(color.Bold, color.Underline).Sprint("Summary")
 	deco := color.New(color.Bold).Sprint("=====")
 	Info("      %s %s %s", deco, heading, deco)
-	Info("     Sent data: %v KiB", bytes_sent / 1024.0)
+	Info("     Sent data: %v KiB", bytes_sent/1024.0)
 	Info("  Sent packets: %v packets", packets_sent)
 	Info("   Packet size: %v B", s.packet_size)
 	Info("      Duration: %s", elapsed)
@@ -137,7 +135,6 @@ func workerThread(conn *snet.Conn, counter chan int, spawner SpateClientSpawner)
 		}
 		counter <- sent_bytes
 	}
-	close(counter)
 }
 
 func awaitCompletion(conn *snet.Conn, complete chan struct{}) {
