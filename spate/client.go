@@ -165,8 +165,8 @@ func workerThread(conn *snet.Conn, counter chan int, spawner SpateClientSpawner)
 	esum := 0.0
 	eold := 0.0
 	Kp := 1.0
-	Ki := 0.0
-	Kd := 0.0
+	Ki := 1.0
+	Kd := 1.0
 
 	for {
 		sent_bytes, err := conn.Write(*rand.Get())
@@ -178,12 +178,11 @@ func workerThread(conn *snet.Conn, counter chan int, spawner SpateClientSpawner)
 		// only do bandwidth control if target bps is specified
 		if target_KiBps > 0 {
 			// PID controller
-			Ta := float64(time.Since(prev_time).Microseconds())
 			KiBps := (float64(sent_bytes) / 1024.0) / time.Since(prev_time).Seconds()
 			prev_time = time.Now()
 			e := KiBps - target_KiBps
 			esum += e
-			y := (Kp * e) + (Ki * Ta * esum) + (Kd * (e - eold) / Ta)
+			y := (Kp * e) + (Ki * esum) + (Kd * (e - eold))
 			eold = e
 
 			data <- CSVPoint{Mibps: KiBps * 8.0 / 1024.0}

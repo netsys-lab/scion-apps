@@ -99,7 +99,7 @@ runner:
 
 	Info("Measurements finished!")
 	elapsed := time.Since(start)
-	throughput := float64(bytes_received) / elapsed.Seconds() / 1024.0 / 1024.0 * 8.0
+	throughput := float64(bytes_received) / elapsed.Seconds() * 8.0 / 1024.0 / 1024.0
 
 	Info("Notifying clients to stop sending...")
 	remote_addrs := make(map[net.Addr]bool)
