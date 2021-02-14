@@ -132,7 +132,9 @@ runner:
 	elapsed := time.Since(start)
 	actual_bandwidth := float64(bytes_sent) / elapsed.Seconds() * 8.0 / 1024.0 / 1024.0
 
+	Info("Waiting for all threads to finish...")
 	stop <- struct{}{}
+	Info("Saving measurements to file...")
 	wg.Wait()
 
 	heading := color.New(color.Bold, color.Underline).Sprint("Summary")
@@ -174,8 +176,9 @@ type BandwidthControlPoint struct {
 	timestamp  time.Time
 }
 
-func simpleBandwidthControl(control_points chan BandwidthControlPoint, sleep_duration *int64, spawner SpateClientSpawner) {
+func simpleBandwidthControl(control_points chan BandwidthControlPoint, sleep_duration *int64, finalize *sync.WaitGroup, spawner SpateClientSpawner) {
 	var data []CSVPoint
+	defer finalize.Done()
 
 	// duration in seconds as (Bytes * 8) / (Bits / second) = second
 	target_duration := float64(spawner.packet_size*8) / float64(spawner.bandwidth)
