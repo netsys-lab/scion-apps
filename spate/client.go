@@ -4,7 +4,8 @@ import (
 	"os"
 	"os/signal"
 	"time"
-	//"fmt"
+	"fmt"
+	"sync/atomic"
 
 	"github.com/fatih/color"
 	"github.com/netsec-ethz/scion-apps/pkg/appnet"
@@ -145,7 +146,7 @@ runner:
 	return nil
 }
 
-/*type CSVPoint struct {
+type CSVPoint struct {
 	Mibps float64
 }
 
@@ -160,20 +161,77 @@ func csv(data chan CSVPoint) {
 	for item := range data {
 		f.WriteString(fmt.Sprintf("%v\n", item.Mibps))
 	}
-}*/
+}
 
-func workerThread(conn *snet.Conn, counter chan int, spawner SpateClientSpawner) {
-	//data := make(chan CSVPoint)
-	//go csv(data)
+func simpleBandwidthControl(bytes_chan chan int, sleep_duration *int64, spawner SpateClientSpawner) {
+	data := make(chan CSVPoint)
+	go csv(data)
 
-	rand := NewFastRand(uint64(spawner.packet_size))
+	prev_time := time.Now()
+	// duration in seconds as (Bytes * 8) / (Bits / second) = second
+	target_duration := float64(spawner.packet_size * 8) / float64(spawner.bandwidth)
+
+	for sent_bytes := range bytes_chan {
+		duration := time.Since(prev_time)
+		prev_time = time.Now()
+
+		atomic.StoreInt64(
+			sleep_duration,
+			int64((target_duration - duration.Seconds()) * float64(time.Second)),
+		)
+
+		KiBps := (float64(sent_bytes) / 1024.0) / duration.Seconds()
+		// this is not in production as it costs ~80% of performance
+		data <- CSVPoint{Mibps: KiBps * 8.0 / 1024.0}
+	}
+
+	close(data)
+}
+
+func pidBandwidthControl(bytes_chan chan int, sleep_duration *int64, spawner SpateClientSpawner) {
+	data := make(chan CSVPoint)
+	go csv(data)
+
 	target_KiBps := float64(spawner.bandwidth) / 8.0 / 1024.0
 	prev_time := time.Now()
 	esum := 0.0
 	eold := 0.0
-	Kp := 0.2
-	Ki := 0.4
-	Kd := 0.1
+	Kp := 1.0
+	Ki := 1.0
+	Kd := 1.0
+	Ta := 1.0
+
+	for sent_bytes := range bytes_chan {
+		KiBps := (float64(sent_bytes) / 1024.0) / time.Since(prev_time).Seconds()
+		prev_time = time.Now()
+		// this is not in production as it costs ~80% of performance
+		data <- CSVPoint{Mibps: KiBps * 8.0 / 1024.0}
+
+		// only do bandwidth control if target bps is specified
+		if target_KiBps > 0 {
+			// PID controller
+			e := KiBps - target_KiBps
+			esum += e
+			y := (Kp * e) + (Ki * Ta * esum) + (Kd * ((e - eold) / Ta))
+			eold = e
+
+			atomic.StoreInt64(
+				sleep_duration,
+				int64(y * float64(time.Microsecond)),
+			)
+		}
+	}
+
+	close(data)
+}
+
+func workerThread(conn *snet.Conn, counter chan int, spawner SpateClientSpawner) {
+	var sleep_duration int64
+
+	rand := NewFastRand(uint64(spawner.packet_size))
+	bytes_chan := make(chan int)
+	//go simpleBandwidthControl(bytes_chan, &sleep_duration, spawner)
+	go pidBandwidthControl(bytes_chan, &sleep_duration, spawner)
 
 	for {
 		sent_bytes, err := conn.Write(*rand.Get())
@@ -182,28 +240,13 @@ func workerThread(conn *snet.Conn, counter chan int, spawner SpateClientSpawner)
 			break
 		}
 
-		KiBps := (float64(sent_bytes) / 1024.0) / time.Since(prev_time).Seconds()
-		prev_time = time.Now()
-		// this is not in production as it costs ~80% of performance
-		//data <- CSVPoint{Mibps: KiBps * 8.0 / 1024.0}
-
-		// only do bandwidth control if target bps is specified
-		if target_KiBps > 0 {
-			// PID controller
-			e := KiBps - target_KiBps
-			esum += e
-			y := (Kp * e) + (Ki * esum) + (Kd * (e - eold))
-			eold = e
-
-			if y > 0 {
-				time.Sleep(time.Duration(y * float64(time.Microsecond)))
-			}
-		}
-
 		counter <- sent_bytes
-	}
+		bytes_chan <- sent_bytes
 
-	//close(data)
+		if sleep_duration > 0 {
+			time.Sleep(time.Duration(sleep_duration))
+		}
+	}
 }
 
 func awaitCompletion(conn *snet.Conn, complete chan struct{}) {
