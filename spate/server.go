@@ -11,6 +11,35 @@ import (
 	"github.com/scionproto/scion/go/lib/snet"
 )
 
+type AsyncReadResult struct {
+	resp_length int
+	err         error
+}
+
+func asyncConnRead(conn *snet.Conn, recvbuf []byte) chan AsyncReadResult {
+	recv := make(chan AsyncReadResult, 1)
+	go func() {
+		resp_length, err := conn.Read(recvbuf)
+		recv <- AsyncReadResult{resp_length: resp_length, err: err}
+	}()
+	return recv
+}
+
+type AsyncReadFromResult struct {
+	resp_length int
+	addr        net.Addr
+	err         error
+}
+
+func asyncConnReadFrom(conn *snet.Conn, recvbuf []byte) chan AsyncReadFromResult {
+	recv := make(chan AsyncReadFromResult, 1)
+	go func() {
+		resp_length, addr, err := conn.ReadFrom(recvbuf)
+		recv <- AsyncReadFromResult{resp_length: resp_length, addr: addr, err: err}
+	}()
+	return recv
+}
+
 type SpateServerSpawner struct {
 	runtime_duration time.Duration
 	port             uint16
@@ -39,35 +68,6 @@ func (s SpateServerSpawner) RuntimeDuration(runtime_duration time.Duration) Spat
 func (s SpateServerSpawner) PacketSize(packet_size int) SpateServerSpawner {
 	s.packet_size = packet_size
 	return s
-}
-
-type AsyncReadResult struct {
-	resp_length int
-	err         error
-}
-
-func asyncConnRead(conn *snet.Conn, recvbuf []byte) chan AsyncReadResult {
-	recv := make(chan AsyncReadResult, 1)
-	go func() {
-		resp_length, err := conn.Read(recvbuf)
-		recv <- AsyncReadResult{resp_length: resp_length, err: err}
-	}()
-	return recv
-}
-
-type AsyncReadFromResult struct {
-	resp_length int
-	addr        net.Addr
-	err         error
-}
-
-func asyncConnReadFrom(conn *snet.Conn, recvbuf []byte) chan AsyncReadFromResult {
-	recv := make(chan AsyncReadFromResult, 1)
-	go func() {
-		resp_length, addr, err := conn.ReadFrom(recvbuf)
-		recv <- AsyncReadFromResult{resp_length: resp_length, addr: addr, err: err}
-	}()
-	return recv
 }
 
 func (s SpateServerSpawner) Spawn() error {
