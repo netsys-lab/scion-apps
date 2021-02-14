@@ -85,6 +85,8 @@ runner:
 				break runner
 			}
 
+			// the summing should actually be done by the I-part of the PID
+			// but I can't figure out a working parameterization with huge I
 			duration += point.timestamp.Sub(prev_time)
 			sent_bytes += point.sent_bytes
 			prev_time = point.timestamp
