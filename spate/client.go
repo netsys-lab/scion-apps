@@ -1,10 +1,8 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"os/signal"
-	"sync/atomic"
 	"sync"
 	"time"
 
@@ -132,9 +130,7 @@ runner:
 	elapsed := time.Since(start)
 	actual_bandwidth := float64(bytes_sent) / elapsed.Seconds() * 8.0 / 1024.0 / 1024.0
 
-	Info("Waiting for all threads to finish...")
 	stop <- struct{}{}
-	Info("Saving measurements to file...")
 	wg.Wait()
 
 	heading := color.New(color.Bold, color.Underline).Sprint("Summary")
@@ -154,131 +150,14 @@ runner:
 	return nil
 }
 
-type CSVPoint struct {
-	Mibps float64
-}
-
-func csv(data []CSVPoint) {
-	f, err := os.OpenFile("spate/pid.csv", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
-		Error("Failed to create spate/pid.csv: %v", err)
-	}
-	defer f.Close()
-	f.WriteString("Mibps\n")
-
-	for _, item := range data {
-		f.WriteString(fmt.Sprintf("%v\n", item.Mibps))
-	}
-}
-
-type BandwidthControlPoint struct {
-	sent_bytes int
-	timestamp  time.Time
-}
-
-func simpleBandwidthControl(control_points chan BandwidthControlPoint, sleep_duration *int64, finalize *sync.WaitGroup, spawner SpateClientSpawner) {
-	var data []CSVPoint
-	defer finalize.Done()
-
-	// duration in seconds as (Bytes * 8) / (Bits / second) = second
-	target_duration := float64(spawner.packet_size*8) / float64(spawner.bandwidth)
-	prev_time := time.Now()
-
-	for point := range control_points {
-		duration := point.timestamp.Sub(prev_time)
-		prev_time = point.timestamp
-
-		if spawner.bandwidth > 0 {
-			atomic.StoreInt64(
-				sleep_duration,
-				int64((target_duration-duration.Seconds())*float64(time.Second)),
-			)
-		}
-
-		// this is not in production as it costs ~80% of performance
-		data = append(data, CSVPoint{Mibps: float64(point.sent_bytes) * 8.0 / 1024.0 / 1024.0 / duration.Seconds()})
-	}
-
-	csv(data)
-}
-
-func pidBandwidthControl(control_points chan BandwidthControlPoint, sleep_duration *int64, finalize *sync.WaitGroup, spawner SpateClientSpawner) {
-	var data []CSVPoint
-	defer finalize.Done()
-
-	target_KiBps := float64(spawner.bandwidth) / 8.0 / 1024.0
-	esum := 0.0
-	eold := 0.0
-	Kp := 400000.0
-	Ki := 5.0
-	Kd := 4.0
-	Ta := 0.01
-
-	ticker := time.NewTicker(time.Duration(time.Millisecond))
-	defer ticker.Stop()
-
-	duration := time.Duration(0)
-	sent_bytes := 0
-	prev_time := time.Now()
-
-runner:
-	for {
-		select {
-		case <-ticker.C:
-			duration = time.Duration(0)
-			sent_bytes = 0
-
-			// only do bandwidth control if target bps is specified
-			if target_KiBps > 0 {
-				KiBps := (float64(sent_bytes) / 1024.0) / duration.Seconds()
-				// PID controller
-				e := KiBps - target_KiBps
-				esum += e
-				y := (Kp * e) + (Ki * Ta * esum) + (Kd * (e - eold) / Ta)
-				eold = e
-
-				atomic.StoreInt64(sleep_duration, int64(y))
-			}
-		case point, ok := <-control_points:
-			if !ok {
-				// control points got closed
-				break runner
-			}
-
-			duration += point.timestamp.Sub(prev_time)
-			prev_time = point.timestamp
-			sent_bytes += point.sent_bytes
-
-			// this is not in production as it costs ~80% of performance
-			data = append(data, CSVPoint{Mibps: float64(sent_bytes) * 8.0 / 1024.0 / 1024.0 / duration.Seconds()})
-		}
-	}
-
-	csv(data)
-}
-
-type AsyncWriteResult struct {
-	sent_bytes int
-	err        error
-}
-
-func asyncConnWrite(conn *snet.Conn, buf []byte) chan AsyncWriteResult {
-	res := make(chan AsyncWriteResult, 1)
-	go func() {
-		sent_bytes, err := conn.Write(buf)
-		res <- AsyncWriteResult{sent_bytes: sent_bytes, err: err}
-	}()
-	return res
-}
-
 func workerThread(conn *snet.Conn, counter chan int, stop chan struct{}, finalize *sync.WaitGroup, spawner SpateClientSpawner) {
 	var sleep_duration int64
 	defer finalize.Done()
 
 	rand := NewFastRand(uint64(spawner.packet_size))
 	control_points := make(chan BandwidthControlPoint, 1024)
-	//go simpleBandwidthControl(control_points, &sleep_duration, finalize, spawner)
-	go pidBandwidthControl(control_points, &sleep_duration, finalize, spawner)
+	//go SimpleBandwidthControl(control_points, &sleep_duration, finalize, spawner)
+	go PidBandwidthControl(control_points, &sleep_duration, finalize, spawner)
 
 worker:
 	for {
@@ -286,14 +165,14 @@ worker:
 		case <-stop:
 			break worker
 		default:
-			byties, err := conn.Write(*rand.Get())
+			sent_bytes, err := conn.Write(*rand.Get())
 			if err != nil {
 				Error("Sending data failed: %v", err)
 				break
 			}
 
-			control_points <- BandwidthControlPoint{sent_bytes: byties, timestamp: time.Now()}
-			counter <- byties
+			control_points <- BandwidthControlPoint{sent_bytes: sent_bytes, timestamp: time.Now()}
+			counter <- sent_bytes
 
 			if sleep_duration > 0 {
 				time.Sleep(time.Duration(sleep_duration))
