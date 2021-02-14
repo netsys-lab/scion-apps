@@ -47,7 +47,7 @@ type AsyncReadResult struct {
 }
 
 func asyncConnRead(conn *snet.Conn, recvbuf []byte) chan AsyncReadResult {
-	recv := make(chan AsyncReadResult)
+	recv := make(chan AsyncReadResult, 1)
 	go func() {
 		resp_length, err := conn.Read(recvbuf)
 		recv <- AsyncReadResult{resp_length: resp_length, err: err}
@@ -62,7 +62,7 @@ type AsyncReadFromResult struct {
 }
 
 func asyncConnReadFrom(conn *snet.Conn, recvbuf []byte) chan AsyncReadFromResult {
-	recv := make(chan AsyncReadFromResult)
+	recv := make(chan AsyncReadFromResult, 1)
 	go func() {
 		resp_length, addr, err := conn.ReadFrom(recvbuf)
 		recv <- AsyncReadFromResult{resp_length: resp_length, addr: addr, err: err}

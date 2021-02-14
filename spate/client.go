@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"sync/atomic"
+	"sync"
 	"time"
 
 	"github.com/fatih/color"
@@ -78,7 +79,7 @@ func (s SpateClientSpawner) Spawn() error {
 
 	bytes_sent := 0
 	packets_sent := 0
-	complete := make(chan struct{})
+	complete := make(chan struct{}, len(paths))
 	var conns []*snet.Conn
 	for _, path := range paths {
 		// Set selected singular path
@@ -94,16 +95,18 @@ func (s SpateClientSpawner) Spawn() error {
 		}
 	}
 
-	counter := make(chan int)
-	stop := make(chan struct{})
+	counter := make(chan int, 1024)
+	stop := make(chan struct{}, 1)
 	cancel := make(chan os.Signal, 1)
 	signal.Notify(cancel, os.Interrupt)
 
 	Info("Starting sending data for measurements...")
 	start := time.Now()
+	var wg sync.WaitGroup
 	for _, conn := range conns {
 		// Spawn new thread
-		go workerThread(conn, counter, stop, s)
+		wg.Add(2)
+		go workerThread(conn, counter, stop, &wg, s)
 	}
 
 	closed_conn := 0
@@ -130,6 +133,7 @@ runner:
 	actual_bandwidth := float64(bytes_sent) / elapsed.Seconds() * 8.0 / 1024.0 / 1024.0
 
 	stop <- struct{}{}
+	wg.Wait()
 
 	heading := color.New(color.Bold, color.Underline).Sprint("Summary")
 	deco := color.New(color.Bold).Sprint("=====")
@@ -195,8 +199,9 @@ func simpleBandwidthControl(control_points chan BandwidthControlPoint, sleep_dur
 	csv(data)
 }
 
-func pidBandwidthControl(control_points chan BandwidthControlPoint, sleep_duration *int64, spawner SpateClientSpawner) {
+func pidBandwidthControl(control_points chan BandwidthControlPoint, sleep_duration *int64, finalize *sync.WaitGroup, spawner SpateClientSpawner) {
 	var data []CSVPoint
+	defer finalize.Done()
 
 	target_KiBps := float64(spawner.bandwidth) / 8.0 / 1024.0
 	esum := 0.0
@@ -249,14 +254,13 @@ runner:
 	csv(data)
 }
 
-
 type AsyncWriteResult struct {
 	sent_bytes int
 	err        error
 }
 
 func asyncConnWrite(conn *snet.Conn, buf []byte) chan AsyncWriteResult {
-	res := make(chan AsyncWriteResult)
+	res := make(chan AsyncWriteResult, 1)
 	go func() {
 		sent_bytes, err := conn.Write(buf)
 		res <- AsyncWriteResult{sent_bytes: sent_bytes, err: err}
@@ -264,27 +268,29 @@ func asyncConnWrite(conn *snet.Conn, buf []byte) chan AsyncWriteResult {
 	return res
 }
 
-func workerThread(conn *snet.Conn, counter chan int, stop chan struct{}, spawner SpateClientSpawner) {
+func workerThread(conn *snet.Conn, counter chan int, stop chan struct{}, finalize *sync.WaitGroup, spawner SpateClientSpawner) {
 	var sleep_duration int64
+	defer finalize.Done()
 
 	rand := NewFastRand(uint64(spawner.packet_size))
-	control_points := make(chan BandwidthControlPoint)
-	//go simpleBandwidthControl(control_points, &sleep_duration, spawner)
-	go pidBandwidthControl(control_points, &sleep_duration, spawner)
+	control_points := make(chan BandwidthControlPoint, 1024)
+	//go simpleBandwidthControl(control_points, &sleep_duration, finalize, spawner)
+	go pidBandwidthControl(control_points, &sleep_duration, finalize, spawner)
 
 worker:
 	for {
 		select {
 		case <-stop:
 			break worker
-		case result := <-asyncConnWrite(conn, *rand.Get()):
-			if result.err != nil {
-				Error("Sending data failed: %v", result.err)
+		default:
+			byties, err := conn.Write(*rand.Get())
+			if err != nil {
+				Error("Sending data failed: %v", err)
 				break
 			}
 
-			control_points <- BandwidthControlPoint{sent_bytes: result.sent_bytes, timestamp: time.Now()}
-			counter <- result.sent_bytes
+			control_points <- BandwidthControlPoint{sent_bytes: byties, timestamp: time.Now()}
+			counter <- byties
 
 			if sleep_duration > 0 {
 				time.Sleep(time.Duration(sleep_duration))
