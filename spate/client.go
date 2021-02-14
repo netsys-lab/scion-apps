@@ -217,6 +217,9 @@ runner:
 	for {
 		select {
 		case <-ticker.C:
+			duration = time.Duration(0)
+			sent_bytes = 0
+
 			// only do bandwidth control if target bps is specified
 			if target_KiBps > 0 {
 				KiBps := (float64(sent_bytes) / 1024.0) / duration.Seconds()
