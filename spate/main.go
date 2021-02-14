@@ -8,16 +8,16 @@ import (
 
 func main() {
 	app := &cli.App{
-		Name:  "scion-spate",
-		Usage: "Scion performance analysis tool for empirical studies",
+		Name:                 "scion-spate",
+		Usage:                "Scion performance analysis tool for empirical studies",
 		EnableBashCompletion: true,
 		Authors: []*cli.Author{
 			&cli.Author{
-				Name: "Fin Christensen",
+				Name:  "Fin Christensen",
 				Email: "fin.christensen@st.ovgu.de",
 			},
 			&cli.Author{
-				Name: "Johannes Wünsche",
+				Name:  "Johannes Wünsche",
 				Email: "johannes.wuensche@st.ovgu.de",
 			},
 		},

@@ -1,11 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/signal"
-	"time"
-	"fmt"
 	"sync/atomic"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/netsec-ethz/scion-apps/pkg/appnet"
@@ -25,7 +25,7 @@ func NewSpateClientSpawner(server_address string) SpateClientSpawner {
 		server_address: server_address,
 		packet_size:    1208,
 		single_path:    false,
-		bandwidth:	0,
+		bandwidth:      0,
 	}
 }
 
@@ -95,6 +95,7 @@ func (s SpateClientSpawner) Spawn() error {
 	}
 
 	counter := make(chan int)
+	stop := make(chan struct{})
 	cancel := make(chan os.Signal, 1)
 	signal.Notify(cancel, os.Interrupt)
 
@@ -102,9 +103,8 @@ func (s SpateClientSpawner) Spawn() error {
 	start := time.Now()
 	for _, conn := range conns {
 		// Spawn new thread
-		go workerThread(conn, counter, s)
+		go workerThread(conn, counter, stop, s)
 	}
-
 
 	closed_conn := 0
 	total_conn := len(conns)
@@ -118,7 +118,7 @@ runner:
 			Info("Received interrupt signal, stopping flooding of available paths...")
 			break runner
 		case <-complete:
-			closed_conn +=1
+			closed_conn += 1
 			if closed_conn >= total_conn {
 				Info("Measurements finished on server!")
 				break runner
@@ -129,6 +129,8 @@ runner:
 	elapsed := time.Since(start)
 	actual_bandwidth := float64(bytes_sent) / elapsed.Seconds() * 8.0 / 1024.0 / 1024.0
 
+	stop <- struct{}{}
+
 	heading := color.New(color.Bold, color.Underline).Sprint("Summary")
 	deco := color.New(color.Bold).Sprint("=====")
 	lower := color.New(color.Bold).Sprint("===================")
@@ -137,7 +139,7 @@ runner:
 	Info("      Sent packets: %v packets", packets_sent)
 	Info("       Packet size: %v B", s.packet_size)
 	Info("          Duration: %s", elapsed)
-	Info("  Target bandwidth: %v Mib/s", float64(s.bandwidth) / 1024.0 / 1024.0)
+	Info("  Target bandwidth: %v Mib/s", float64(s.bandwidth)/1024.0/1024.0)
 	Info("  Actual bandwidth: %v Mib/s", actual_bandwidth)
 	Info("         %s", lower)
 	Info(">>> Please check the server measurements for the throughput achieved through")
@@ -150,7 +152,7 @@ type CSVPoint struct {
 	Mibps float64
 }
 
-func csv(data chan CSVPoint) {
+func csv(data []CSVPoint) {
 	f, err := os.OpenFile("spate/pid.csv", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		Error("Failed to create spate/pid.csv: %v", err)
@@ -158,98 +160,135 @@ func csv(data chan CSVPoint) {
 	defer f.Close()
 	f.WriteString("Mibps\n")
 
-	for item := range data {
+	for _, item := range data {
 		f.WriteString(fmt.Sprintf("%v\n", item.Mibps))
 	}
 }
 
-func simpleBandwidthControl(bytes_chan chan int, sleep_duration *int64, spawner SpateClientSpawner) {
-	data := make(chan CSVPoint)
-	go csv(data)
+type BandwidthControlPoint struct {
+	sent_bytes int
+	timestamp  time.Time
+}
 
-	prev_time := time.Now()
+func simpleBandwidthControl(control_points chan BandwidthControlPoint, sleep_duration *int64, spawner SpateClientSpawner) {
+	var data []CSVPoint
+
 	// duration in seconds as (Bytes * 8) / (Bits / second) = second
-	target_duration := float64(spawner.packet_size * 8) / float64(spawner.bandwidth)
+	target_duration := float64(spawner.packet_size*8) / float64(spawner.bandwidth)
+	prev_time := time.Now()
 
-	for sent_bytes := range bytes_chan {
-		duration := time.Since(prev_time)
-		prev_time = time.Now()
+	for point := range control_points {
+		duration := point.timestamp.Sub(prev_time)
+		prev_time = point.timestamp
 
 		if spawner.bandwidth > 0 {
 			atomic.StoreInt64(
 				sleep_duration,
-				int64((target_duration - duration.Seconds()) * float64(time.Second)),
+				int64((target_duration-duration.Seconds())*float64(time.Second)),
 			)
 		}
 
-		KiBps := (float64(sent_bytes) / 1024.0) / duration.Seconds()
 		// this is not in production as it costs ~80% of performance
-		data <- CSVPoint{Mibps: KiBps * 8.0 / 1024.0}
+		data = append(data, CSVPoint{Mibps: float64(point.sent_bytes) * 8.0 / 1024.0 / 1024.0 / duration.Seconds()})
 	}
 
-	close(data)
+	csv(data)
 }
 
-func pidBandwidthControl(bytes_chan chan int, sleep_duration *int64, spawner SpateClientSpawner) {
-	data := make(chan CSVPoint)
-	go csv(data)
+func pidBandwidthControl(control_points chan BandwidthControlPoint, sleep_duration *int64, spawner SpateClientSpawner) {
+	var data []CSVPoint
 
 	target_KiBps := float64(spawner.bandwidth) / 8.0 / 1024.0
-	prev_time := time.Now()
 	esum := 0.0
 	eold := 0.0
-	Kp := 1.0
-	Ki := 1.0
-	Kd := 1.0
-	Ta := 1.0
+	Kp := 400000.0
+	Ki := 5.0
+	Kd := 4.0
+	Ta := 0.01
 
-	for sent_bytes := range bytes_chan {
-		KiBps := (float64(sent_bytes) / 1024.0) / time.Since(prev_time).Seconds()
-		prev_time = time.Now()
+	ticker := time.NewTicker(time.Duration(time.Millisecond))
+	defer ticker.Stop()
 
-		// only do bandwidth control if target bps is specified
-		if target_KiBps > 0 {
-			// PID controller
-			e := KiBps - target_KiBps
-			esum += e
-			y := (Kp * e) + (Ki * Ta * esum) + (Kd * ((e - eold) / Ta))
-			eold = e
+	duration := time.Duration(0)
+	sent_bytes := 0
+	prev_time := time.Now()
 
-			atomic.StoreInt64(
-				sleep_duration,
-				int64(y * float64(time.Microsecond)),
-			)
+runner:
+	for {
+		select {
+		case <-ticker.C:
+			// only do bandwidth control if target bps is specified
+			if target_KiBps > 0 {
+				KiBps := (float64(sent_bytes) / 1024.0) / duration.Seconds()
+				// PID controller
+				e := KiBps - target_KiBps
+				esum += e
+				y := (Kp * e) + (Ki * Ta * esum) + (Kd * (e - eold) / Ta)
+				eold = e
+
+				atomic.StoreInt64(sleep_duration, int64(y))
+			}
+		case point, ok := <-control_points:
+			if !ok {
+				// control points got closed
+				break runner
+			}
+
+			duration += point.timestamp.Sub(prev_time)
+			prev_time = point.timestamp
+			sent_bytes += point.sent_bytes
+
+			// this is not in production as it costs ~80% of performance
+			data = append(data, CSVPoint{Mibps: float64(sent_bytes) * 8.0 / 1024.0 / 1024.0 / duration.Seconds()})
 		}
-
-		// this is not in production as it costs ~80% of performance
-		data <- CSVPoint{Mibps: KiBps * 8.0 / 1024.0}
 	}
 
-	close(data)
+	csv(data)
 }
 
-func workerThread(conn *snet.Conn, counter chan int, spawner SpateClientSpawner) {
+
+type AsyncWriteResult struct {
+	sent_bytes int
+	err        error
+}
+
+func asyncConnWrite(conn *snet.Conn, buf []byte) chan AsyncWriteResult {
+	res := make(chan AsyncWriteResult)
+	go func() {
+		sent_bytes, err := conn.Write(buf)
+		res <- AsyncWriteResult{sent_bytes: sent_bytes, err: err}
+	}()
+	return res
+}
+
+func workerThread(conn *snet.Conn, counter chan int, stop chan struct{}, spawner SpateClientSpawner) {
 	var sleep_duration int64
 
 	rand := NewFastRand(uint64(spawner.packet_size))
-	bytes_chan := make(chan int)
-	//go simpleBandwidthControl(bytes_chan, &sleep_duration, spawner)
-	go pidBandwidthControl(bytes_chan, &sleep_duration, spawner)
+	control_points := make(chan BandwidthControlPoint)
+	//go simpleBandwidthControl(control_points, &sleep_duration, spawner)
+	go pidBandwidthControl(control_points, &sleep_duration, spawner)
 
+worker:
 	for {
-		sent_bytes, err := conn.Write(*rand.Get())
-		if err != nil {
-			Error("Sending data failed: %v", err)
-			break
-		}
+		select {
+		case <-stop:
+			break worker
+		case result := <-asyncConnWrite(conn, *rand.Get()):
+			if result.err != nil {
+				Error("Sending data failed: %v", result.err)
+				break
+			}
 
-		counter <- sent_bytes
-		bytes_chan <- sent_bytes
+			control_points <- BandwidthControlPoint{sent_bytes: result.sent_bytes, timestamp: time.Now()}
+			counter <- result.sent_bytes
 
-		if sleep_duration > 0 {
-			time.Sleep(time.Duration(sleep_duration))
+			if sleep_duration > 0 {
+				time.Sleep(time.Duration(sleep_duration))
+			}
 		}
 	}
+	close(control_points)
 }
 
 func awaitCompletion(conn *snet.Conn, complete chan struct{}) {

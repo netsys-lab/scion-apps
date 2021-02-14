@@ -1,23 +1,23 @@
 package main
 
 import (
-	"strings"
 	"errors"
+	"strings"
 
 	"github.com/alecthomas/units"
 )
 
 var (
-	bytesUnitMap = units.MakeUnitMap("iB", "B", 1024)
+	bytesUnitMap       = units.MakeUnitMap("iB", "B", 1024)
 	metricBytesUnitMap = units.MakeUnitMap("B", "B", 1000)
-	bitsUnitMap = units.MakeUnitMap("ib", "b", 1024)
-	metricBitsUnitMap = units.MakeUnitMap("b", "b", 1000)
+	bitsUnitMap        = units.MakeUnitMap("ib", "b", 1024)
+	metricBitsUnitMap  = units.MakeUnitMap("b", "b", 1000)
 )
 
 func ParseBitsPerSecond(s string) (int64, error) {
 	s = strings.TrimSpace(s)
 	if strings.HasSuffix(s, "/s") || strings.HasSuffix(s, "ps") {
-		s = s[:len(s) - 2]
+		s = s[:len(s)-2]
 	} else {
 		return 0, errors.New("Invalid denominator in unit: must be '/s' or 'ps' like in 'KB/s' or 'KBps'")
 	}

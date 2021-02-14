@@ -8,6 +8,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/netsec-ethz/scion-apps/pkg/appnet"
+	"github.com/scionproto/scion/go/lib/snet"
 )
 
 type SpateServerSpawner struct {
@@ -40,6 +41,35 @@ func (s SpateServerSpawner) PacketSize(packet_size int) SpateServerSpawner {
 	return s
 }
 
+type AsyncReadResult struct {
+	resp_length int
+	err         error
+}
+
+func asyncConnRead(conn *snet.Conn, recvbuf []byte) chan AsyncReadResult {
+	recv := make(chan AsyncReadResult)
+	go func() {
+		resp_length, err := conn.Read(recvbuf)
+		recv <- AsyncReadResult{resp_length: resp_length, err: err}
+	}()
+	return recv
+}
+
+type AsyncReadFromResult struct {
+	resp_length int
+	addr        net.Addr
+	err         error
+}
+
+func asyncConnReadFrom(conn *snet.Conn, recvbuf []byte) chan AsyncReadFromResult {
+	recv := make(chan AsyncReadFromResult)
+	go func() {
+		resp_length, addr, err := conn.ReadFrom(recvbuf)
+		recv <- AsyncReadFromResult{resp_length: resp_length, addr: addr, err: err}
+	}()
+	return recv
+}
+
 func (s SpateServerSpawner) Spawn() error {
 	Info("Listening for incoming connections on port %d...", s.port)
 	conn, err := appnet.ListenPort(s.port)
@@ -63,37 +93,32 @@ func (s SpateServerSpawner) Spawn() error {
 	signal.Notify(cancel, os.Interrupt)
 
 	start := time.Now()
-	end := start.Add(s.runtime_duration)
+	end := time.After(s.runtime_duration)
 
 	//... handling logic, fetch individual packet
 runner:
 	for {
-		// Handle client requests
-		resp_length, err := conn.Read(recvbuf)
-		if err != nil {
-			Warn("An error occurred while receiving remote packets: %s", err)
-			continue
-		}
-
-		// invalid length
-		if resp_length != s.packet_size {
-			Warn("Received packet was of wrong size: got %d but expected %d", resp_length, s.packet_size)
-			continue
-		}
-
-		bytes_received += resp_length
-		packets_received += 1
-
-		if time.Until(end) <= 0 {
-			break runner
-		}
-
 		select {
+		// Handle client requests
+		case read_result := <-asyncConnRead(conn, recvbuf):
+			if read_result.err != nil {
+				Warn("An error occurred while receiving remote packets: %s", err)
+				continue
+			}
+
+			// invalid length
+			if read_result.resp_length != s.packet_size {
+				Warn("Received packet was of wrong size: got %d but expected %d", read_result.resp_length, s.packet_size)
+				continue
+			}
+
+			bytes_received += read_result.resp_length
+			packets_received += 1
+		case <-end:
+			break runner
 		case <-cancel:
 			Info("Received interrupt signal, canceling measurements...")
 			break runner
-		default:
-			// nop
 		}
 	}
 
@@ -103,17 +128,18 @@ runner:
 
 	Info("Notifying clients to stop sending...")
 	remote_addrs := make(map[net.Addr]bool)
-	timeout_duration, _ := time.ParseDuration("100ms")
-	timeout := time.Now().Add(timeout_duration)
+	timeout := time.After(100 * time.Millisecond)
 	// This loop will receive packets for an additional 100ms to gather all
 	// the clients which must be notified of the finished measurements.
 	// This is not done in the above runner as the map operations below cost
 	// ~40Mibit/s.
+notifier:
 	for {
-		_, addr, _ := conn.ReadFrom(recvbuf)
-		remote_addrs[addr] = true
-		if time.Until(timeout) <= 0 {
-			break
+		select {
+		case read_from_result := <-asyncConnReadFrom(conn, recvbuf):
+			remote_addrs[read_from_result.addr] = true
+		case <-timeout:
+			break notifier
 		}
 	}
 	for addr := range remote_addrs {
