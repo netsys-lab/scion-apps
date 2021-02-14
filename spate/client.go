@@ -175,10 +175,12 @@ func simpleBandwidthControl(bytes_chan chan int, sleep_duration *int64, spawner 
 		duration := time.Since(prev_time)
 		prev_time = time.Now()
 
-		atomic.StoreInt64(
-			sleep_duration,
-			int64((target_duration - duration.Seconds()) * float64(time.Second)),
-		)
+		if spawner.bandwidth > 0 {
+			atomic.StoreInt64(
+				sleep_duration,
+				int64((target_duration - duration.Seconds()) * float64(time.Second)),
+			)
+		}
 
 		KiBps := (float64(sent_bytes) / 1024.0) / duration.Seconds()
 		// this is not in production as it costs ~80% of performance
@@ -204,8 +206,6 @@ func pidBandwidthControl(bytes_chan chan int, sleep_duration *int64, spawner Spa
 	for sent_bytes := range bytes_chan {
 		KiBps := (float64(sent_bytes) / 1024.0) / time.Since(prev_time).Seconds()
 		prev_time = time.Now()
-		// this is not in production as it costs ~80% of performance
-		data <- CSVPoint{Mibps: KiBps * 8.0 / 1024.0}
 
 		// only do bandwidth control if target bps is specified
 		if target_KiBps > 0 {
@@ -220,6 +220,9 @@ func pidBandwidthControl(bytes_chan chan int, sleep_duration *int64, spawner Spa
 				int64(y * float64(time.Microsecond)),
 			)
 		}
+
+		// this is not in production as it costs ~80% of performance
+		data <- CSVPoint{Mibps: KiBps * 8.0 / 1024.0}
 	}
 
 	close(data)
