@@ -17,7 +17,8 @@ func SimpleBandwidthControl(
 	finalize *sync.WaitGroup,
 	spawner SpateClientSpawner,
 ) {
-	var data []CSVPoint
+	//var data []CSVPoint
+	defer finalize.Done()
 
 	// duration in seconds as (Bytes * 8) / (Bits / second) = second
 	target_duration := float64(spawner.packet_size*8) / float64(spawner.bandwidth)
@@ -34,10 +35,10 @@ func SimpleBandwidthControl(
 			)
 		}
 
-		data = append(data, CSVPoint{Mibps: float64(point.sent_bytes) * 8 / 1024 / 1024 / duration.Seconds()})
+		//data = append(data, CSVPoint{Mibps: float64(point.sent_bytes) * 8 / 1024 / 1024 / duration.Seconds()})
 	}
 
-	WriteCSV(data)
+	//WriteCSV(data)
 }
 
 func PidBandwidthControl(
@@ -46,7 +47,7 @@ func PidBandwidthControl(
 	finalize *sync.WaitGroup,
 	spawner SpateClientSpawner,
 ) {
-	var data []CSVPoint
+	//var data []CSVPoint
 	defer finalize.Done()
 
 	target_KiBps := float64(spawner.bandwidth) / 8.0 / 1024.0
@@ -91,14 +92,14 @@ runner:
 			sent_bytes += point.sent_bytes
 			prev_time = point.timestamp
 
-			data = append(
+			/*data = append(
 				data,
 				CSVPoint{
 					Mibps: float64(sent_bytes) * 8 / 1024 / 1024 / duration.Seconds(),
 				},
-			)
+			)*/
 		}
 	}
 
-	WriteCSV(data)
+	//WriteCSV(data)
 }

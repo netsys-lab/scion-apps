@@ -156,8 +156,8 @@ func workerThread(conn *snet.Conn, counter chan int, stop chan struct{}, finaliz
 
 	rand := NewFastRand(uint64(spawner.packet_size))
 	control_points := make(chan BandwidthControlPoint, 1024)
-	//go SimpleBandwidthControl(control_points, &sleep_duration, finalize, spawner)
-	go PidBandwidthControl(control_points, &sleep_duration, finalize, spawner)
+	go SimpleBandwidthControl(control_points, &sleep_duration, finalize, spawner)
+	//go PidBandwidthControl(control_points, &sleep_duration, finalize, spawner)
 
 worker:
 	for {
