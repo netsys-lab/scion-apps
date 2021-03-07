@@ -92,6 +92,23 @@ func DialAddr(raddr *snet.UDPAddr, host string, tlsConf *tls.Config, quicConf *q
 	return &closerSession{session, sconn}, nil
 }
 
+func DialAddrUDP(raddr *snet.UDPAddr, host string, tlsConf *tls.Config, quicConf *quic.Config) (quic.Session, error) {
+	err := ensurePathDefined(raddr)
+	if err != nil {
+		return nil, err
+	}
+	sconn, err := appnet.ListenUDP(nil) // TODO: packetConn
+	if err != nil {
+		return nil, err
+	}
+	host = appnet.MangleSCIONAddr(host)
+	session, err := quic.Dial(sconn, raddr, host, tlsConf, quicConf)
+	if err != nil {
+		return nil, err
+	}
+	return &closerSession{session, sconn}, nil
+}
+
 // DialEarly establishes a new 0-RTT QUIC connection to a server. Analogous to Dial.
 func DialEarly(remote string, tlsConf *tls.Config, quicConf *quic.Config) (quic.EarlySession, error) {
 	raddr, err := appnet.ResolveUDPAddr(remote)

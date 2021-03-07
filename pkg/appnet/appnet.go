@@ -202,6 +202,11 @@ func ListenPort(port uint16) (*snet.Conn, error) {
 	return Listen(&net.UDPAddr{Port: int(port)})
 }
 
+// See note on wildcard addresses in the package documentation.
+func ListenPortUDP(port uint16) (*snet.Conn, error) {
+	return ListenUDP(&net.UDPAddr{Port: int(port)})
+}
+
 // resolveLocal returns the source IP address for traffic to raddr. If
 // raddr.NextHop is set, it's used to determine the local IP address.
 // Otherwise, the default local IP address is returned.
