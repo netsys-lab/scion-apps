@@ -3,6 +3,7 @@ package main
 import (
 	"net"
 	"os"
+	"fmt"
 	"os/signal"
 	"time"
 
@@ -14,6 +15,11 @@ import (
 type AsyncReadResult struct {
 	resp_length int
 	err         error
+}
+
+type IntervalElement struct {
+	bytes	int
+	time    time.Time
 }
 
 func asyncConnRead(conn *snet.Conn, recvbuf []byte) chan AsyncReadResult {
@@ -70,6 +76,34 @@ func (s SpateServerSpawner) PacketSize(packet_size int) SpateServerSpawner {
 	return s
 }
 
+func tock(recv_bytes chan int, intervals chan IntervalElement) {
+	bytes := 0
+	elements_at_start := len(recv_bytes)
+    start_time := time.Now()
+	for idx := 0; idx < elements_at_start; idx++ {
+		bytes += <- recv_bytes;
+	}
+	intervals <- IntervalElement{bytes, start_time}
+}
+
+func clock(recv_bytes chan int, intervals chan IntervalElement, stop chan struct{}) {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+loop:
+	for {
+		select {
+		case _ = <- ticker.C:
+			tock(recv_bytes, intervals)
+		case _ = <- stop:
+			// Clear channel our for last chunk
+			tock(recv_bytes, intervals)
+			close(intervals)
+			break loop
+		}
+	}
+}
+
 func (s SpateServerSpawner) Spawn() error {
 	Info("Listening for incoming connections on port %d...", s.port)
 	conn, err := appnet.ListenPort(s.port)
@@ -92,9 +126,14 @@ func (s SpateServerSpawner) Spawn() error {
 	cancel := make(chan os.Signal, 1)
 	signal.Notify(cancel, os.Interrupt)
 
+
+	recv_bytes_channel := make(chan int, 30720)
+	intervals := make(chan IntervalElement, s.runtime_duration.Milliseconds() / 100)
+	stop := make(chan struct{}, 1)
+	go clock(recv_bytes_channel, intervals, stop)
+
 	start := time.Now()
 	end := time.After(s.runtime_duration)
-
 	//... handling logic, fetch individual packet
 runner:
 	for {
@@ -113,8 +152,10 @@ runner:
 			}
 
 			bytes_received += read_result.resp_length
+			recv_bytes_channel <- read_result.resp_length
 			packets_received += 1
 		case <-end:
+			Info("End!")
 			break runner
 		case <-cancel:
 			Info("Received interrupt signal, canceling measurements...")
@@ -124,6 +165,7 @@ runner:
 
 	Info("Measurements finished!")
 	elapsed := time.Since(start)
+	stop <- struct{}{}
 	throughput := float64(bytes_received) / elapsed.Seconds() * 8.0 / 1024.0 / 1024.0
 
 	Info("Notifying clients to stop sending...")
@@ -145,6 +187,17 @@ notifier:
 	for addr := range remote_addrs {
 		conn.WriteTo([]byte("stop"), addr)
 	}
+
+	file, err := os.Create("measure.csv")
+	if err != nil {
+		Error("Could not create file for measurements")
+	}
+	file.Write([]byte("time,bytes\n"))
+	for itv := range intervals {
+		elapsed := itv.time.Sub(start)
+		file.Write([]byte(fmt.Sprintf("%d,%d\n", elapsed.Milliseconds(), itv.bytes)))
+	}
+
 
 	heading := color.New(color.Bold, color.Underline).Sprint("Measurement Results")
 	deco := color.New(color.Bold).Sprint("=====")
