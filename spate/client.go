@@ -74,14 +74,14 @@ func (s SpateClientSpawner) Spawn() error {
 				os.Exit(1)
 			}
 			paths = append(paths, chosen_path)
+			if s.single_path {
+				break selection
+			}
 			fmt.Print("Would you like to choose an additional path? (y/N): ")
 			var input string
 		prompt:
 			for {
 				fmt.Scanln(&input)
-				if s.single_path {
-					break selection
-				}
 				switch input {
 				case "y", "Y":
 					break prompt
