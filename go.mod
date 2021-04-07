@@ -7,6 +7,7 @@ require (
 	github.com/alecthomas/units v0.0.0-20190924025748-f65c72e2690d
 	github.com/bclicn/color v0.0.0-20180711051946-108f2023dc84
 	github.com/fatih/color v1.9.0
+	github.com/gammazero/workerpool v1.1.1 // indirect
 	github.com/inconshreveable/log15 v0.0.0-20180818164646-67afb5ed74ec
 	github.com/kormat/fmt15 v0.0.0-20181112140556-ee69fecb2656
 	github.com/kr/pty v1.1.8
@@ -22,4 +23,4 @@ require (
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 )
 
-replace github.com/scionproto/scion => /home/marten/go/src/github.com/martenwallewein/scion
+replace github.com/scionproto/scion => /home/vagrant/scion

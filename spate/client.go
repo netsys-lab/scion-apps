@@ -64,7 +64,7 @@ func (s SpateClientSpawner) Spawn() error {
 		os.Exit(1)
 	}
 	if paths == nil {
-		Warn("Detected test on localhost. Multipath is not available...")
+		Warn("Detected test on direct connection. Multipath via SCION is not available...")
 		paths = []snet.Path{nil}
 	}
 	if s.single_path {
@@ -83,13 +83,15 @@ func (s SpateClientSpawner) Spawn() error {
 		// Set selected singular path
 		Info("Creating new connection on path %v...", path)
 		appnet.SetPath(serverAddr, path)
-		conn, err := appnet.DialAddr(serverAddr)
-		// Checking on err != nil will not work here as non-critical errors are returned
-		if conn != nil {
-			go awaitCompletion(conn, complete)
-			conns = append(conns, conn)
-		} else {
-			Warn("Connection on path %v failed: %v", path, err)
+		for i :=0; i < 8; i++ {
+			conn, err := appnet.DialAddrUDP(serverAddr)
+			// Checking on err != nil will not work here as non-critical errors are returned
+			if conn != nil {
+				go awaitCompletion(conn, complete)
+				conns = append(conns, conn)
+			} else {
+				Warn("Connection on path %v failed: %v", path, err)
+			}
 		}
 	}
 
@@ -103,7 +105,8 @@ func (s SpateClientSpawner) Spawn() error {
 	var wg sync.WaitGroup
 	for _, conn := range conns {
 		// Spawn new thread
-		wg.Add(2)
+		wg.Add(1)
+		Info("Spawn Connection!")
 		go workerThread(conn, counter, stop, &wg, s)
 	}
 
@@ -131,7 +134,7 @@ runner:
 	actual_bandwidth := float64(bytes_sent) / elapsed.Seconds() * 8.0 / 1024.0 / 1024.0
 
 	stop <- struct{}{}
-	wg.Wait()
+	//wg.Wait()
 
 	heading := color.New(color.Bold, color.Underline).Sprint("Summary")
 	deco := color.New(color.Bold).Sprint("=====")
@@ -156,8 +159,8 @@ func workerThread(conn *snet.Conn, counter chan int, stop chan struct{}, finaliz
 
 	rand := NewFastRand(uint64(spawner.packet_size))
 	control_points := make(chan BandwidthControlPoint, 1024)
-	go SimpleBandwidthControl(control_points, &sleep_duration, finalize, spawner)
-	//go PidBandwidthControl(control_points, &sleep_duration, finalize, spawner)
+	//go SimpleBandwidthControl(control_points, &sleep_duration, finalize, spawner)
+	go PidBandwidthControl(control_points, &sleep_duration, finalize, spawner)
 
 worker:
 	for {
@@ -179,7 +182,7 @@ worker:
 			}
 		}
 	}
-	close(control_points)
+	//close(control_points)
 }
 
 func awaitCompletion(conn *snet.Conn, complete chan struct{}) {
