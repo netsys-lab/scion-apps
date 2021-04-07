@@ -106,7 +106,7 @@ loop:
 
 func (s SpateServerSpawner) Spawn() error {
 	Info("Listening for incoming connections on port %d...", s.port)
-	conn, err := appnet.ListenPort(s.port)
+	conn, err := appnet.ListenPortUDP(s.port)
 	if err != nil {
 		Error("Listening for incoming connections failed: %s", err)
 		return err
