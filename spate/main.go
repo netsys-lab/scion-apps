@@ -90,6 +90,12 @@ func main() {
 						Usage:       "use single-path transmission instead of\n\t\tmulti-path",
 						DefaultText: "false",
 					},
+					&cli.BoolFlag{
+						Name:        "interactive",
+						Aliases:     []string{"i"},
+						Usage:       "use interactive path selection",
+						DefaultText: "false",
+					},
 					&cli.StringFlag{
 						Name:        "target-bandwidth",
 						Aliases:     []string{"b"},
@@ -109,6 +115,10 @@ func main() {
 
 					if c.IsSet("single-path") {
 						clientSpawner = clientSpawner.SinglePath(c.Bool("single-path"))
+					}
+
+					if c.IsSet("interactive") {
+						clientSpawner = clientSpawner.Interactive(c.Bool("interactive"))
 					}
 
 					if c.IsSet("target-bandwidth") {
