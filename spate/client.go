@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"os/signal"
+	"fmt"
 	"sync"
 	"time"
 
@@ -12,10 +13,11 @@ import (
 )
 
 type SpateClientSpawner struct {
-	server_address string
-	packet_size    int
-	single_path    bool
-	bandwidth      int64
+	server_address	string
+	packet_size		int
+	single_path		bool
+	interactive		bool
+	bandwidth 		int64
 }
 
 // e.g. NewSpateClientSpawner("16-ffaa:0:1001,[172.31.0.23]:1337")
@@ -24,6 +26,7 @@ func NewSpateClientSpawner(server_address string) SpateClientSpawner {
 		server_address: server_address,
 		packet_size:    1208,
 		single_path:    false,
+		interactive:	false,
 		bandwidth:      0,
 	}
 }
@@ -43,6 +46,11 @@ func (s SpateClientSpawner) SinglePath(single_path bool) SpateClientSpawner {
 	return s
 }
 
+func (s SpateClientSpawner) Interactive(interactive bool) SpateClientSpawner {
+	s.interactive = interactive
+	return s
+}
+
 func (s SpateClientSpawner) Bandwidth(bandwidth int64) SpateClientSpawner {
 	s.bandwidth = bandwidth
 	return s
@@ -56,21 +64,53 @@ func (s SpateClientSpawner) Spawn() error {
 		return err
 	}
 
-	Info("Searching paths to remote...")
-	paths, err := appnet.QueryPaths(serverAddr.IA)
-	if err != nil {
-		Warn("Could not query for available paths: %v", err)
-		Error("Could not find valid paths!")
-		os.Exit(1)
-	}
-	if paths == nil {
-		Warn("Detected test on direct connection. Multipath via SCION is not available...")
-		paths = []snet.Path{nil}
-	}
-	if s.single_path {
-		// Use first available path
-		Info("Using single path")
-		paths = paths[:1]
+	paths := []snet.Path{nil}
+	if s.interactive {
+	selection:
+		for {
+			chosen_path, err := appnet.ChoosePathInteractive(serverAddr.IA)
+			if err != nil || chosen_path == nil {
+				Error("Error while selecting chosen path! Please check the given paths.")
+				os.Exit(1)
+			}
+			paths = append(paths, chosen_path)
+			fmt.Print("Would you like to choose an additional path? (y/N): ")
+			var input string
+		prompt:
+			for {
+				fmt.Scanln(&input)
+				if s.single_path {
+					break selection
+				}
+				switch input {
+				case "y", "Y":
+					break prompt
+				case "n", "N", "":
+					break selection
+				default:
+					fmt.Print("Choose yes or no (y/N): ")
+					continue
+				}
+			}
+		}
+
+	} else {
+		Info("Searching paths to remote...")
+		paths, err = appnet.QueryPaths(serverAddr.IA)
+		if err != nil {
+			Warn("Could not query for available paths: %v", err)
+			Error("Could not find valid paths!")
+			os.Exit(1)
+		}
+		if paths == nil {
+			Warn("Detected test on direct connection. Multipath via SCION is not available...")
+			paths = []snet.Path{nil}
+		}
+		if s.single_path {
+			// Use first available path
+			Info("Using single path")
+			paths = paths[:1]
+		}
 	}
 	Info("Choosing the following paths: %v", paths)
 	Info("Establishing connections with server...")
