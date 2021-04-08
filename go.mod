@@ -23,4 +23,4 @@ require (
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 )
 
-replace github.com/scionproto/scion => /home/vagrant/scion
+replace github.com/scionproto/scion => github.com/netsys-lab/scion v0.0.0-20210408103759-0d1446adaa85
