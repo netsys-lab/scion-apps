@@ -153,11 +153,7 @@ runner:
 func workerThread(conn *snet.Conn, counter chan int, stop chan struct{}, finalize *sync.WaitGroup, spawner SpateClientSpawner) {
 	var sleep_duration int64
 	defer finalize.Done()
-
 	rand := NewFastRand(uint64(spawner.packet_size))
-	control_points := make(chan BandwidthControlPoint, 1024)
-	go SimpleBandwidthControl(control_points, &sleep_duration, finalize, spawner)
-	//go PidBandwidthControl(control_points, &sleep_duration, finalize, spawner)
 
 worker:
 	for {
@@ -171,7 +167,6 @@ worker:
 				break
 			}
 
-			control_points <- BandwidthControlPoint{sent_bytes: sent_bytes, timestamp: time.Now()}
 			counter <- sent_bytes
 
 			if sleep_duration > 0 {
@@ -179,7 +174,6 @@ worker:
 			}
 		}
 	}
-	close(control_points)
 }
 
 func awaitCompletion(conn *snet.Conn, complete chan struct{}) {
