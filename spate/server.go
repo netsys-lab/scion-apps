@@ -96,8 +96,6 @@ loop:
 		case _ = <- ticker.C:
 			tock(recv_bytes, intervals)
 		case _ = <- stop:
-			// Clear channel our for last chunk
-			tock(recv_bytes, intervals)
 			close(intervals)
 			break loop
 		}
