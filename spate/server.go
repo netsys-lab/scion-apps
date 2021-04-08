@@ -18,8 +18,8 @@ type AsyncReadResult struct {
 }
 
 type IntervalElement struct {
-	bytes	int
-	time    time.Time
+	bytes		int
+	time    	time.Time
 }
 
 func asyncConnRead(conn *snet.Conn, recvbuf []byte) chan AsyncReadResult {
@@ -48,14 +48,17 @@ func asyncConnReadFrom(conn *snet.Conn, recvbuf []byte) chan AsyncReadFromResult
 
 type SpateServerSpawner struct {
 	runtime_duration time.Duration
+	interval_freq	 time.Duration
 	port             uint16
 	packet_size      int
 }
 
 func NewSpateServerSpawner() SpateServerSpawner {
 	var runtime_duration, _ = time.ParseDuration("1s")
+	var interval_freq, _ = time.ParseDuration("100ms")
 	return SpateServerSpawner{
 		runtime_duration: runtime_duration,
+		interval_freq:	  interval_freq,
 		port:             1337,
 		packet_size:      1208,
 	}
@@ -71,30 +74,31 @@ func (s SpateServerSpawner) RuntimeDuration(runtime_duration time.Duration) Spat
 	return s
 }
 
+func (s SpateServerSpawner) IntervalFrequency(freq time.Duration) SpateServerSpawner {
+	s.interval_freq = freq
+	return s
+}
+
 func (s SpateServerSpawner) PacketSize(packet_size int) SpateServerSpawner {
 	s.packet_size = packet_size
 	return s
 }
 
-func tock(recv_bytes chan int, intervals chan IntervalElement) {
-	bytes := 0
-	elements_at_start := len(recv_bytes)
-    start_time := time.Now()
-	for idx := 0; idx < elements_at_start; idx++ {
-		bytes += <- recv_bytes;
-	}
-	intervals <- IntervalElement{bytes, start_time}
-}
-
-func clock(recv_bytes chan int, intervals chan IntervalElement, stop chan struct{}) {
-	ticker := time.NewTicker(100 * time.Millisecond)
+func clock(recv_bytes chan int, duration time.Duration, intervals chan IntervalElement, stop chan struct{}) {
+	ticker := time.NewTicker(duration)
 	defer ticker.Stop()
 
 loop:
 	for {
 		select {
 		case _ = <- ticker.C:
-			tock(recv_bytes, intervals)
+			bytes := 0
+			elements_at_start := len(recv_bytes)
+			start_time := time.Now()
+			for idx := 0; idx < elements_at_start; idx++ {
+				bytes += <- recv_bytes;
+			}
+			intervals <- IntervalElement{bytes, start_time}
 		case _ = <- stop:
 			close(intervals)
 			break loop
@@ -104,7 +108,7 @@ loop:
 
 func (s SpateServerSpawner) Spawn() error {
 	Info("Listening for incoming connections on port %d...", s.port)
-	conn, err := appnet.ListenPortUDP(s.port)
+	conn, err := appnet.ListenPort(s.port)
 	if err != nil {
 		Error("Listening for incoming connections failed: %s", err)
 		return err
@@ -128,7 +132,7 @@ func (s SpateServerSpawner) Spawn() error {
 	recv_bytes_channel := make(chan int, 30720)
 	intervals := make(chan IntervalElement, s.runtime_duration.Milliseconds() / 100)
 	stop := make(chan struct{}, 1)
-	go clock(recv_bytes_channel, intervals, stop)
+	go clock(recv_bytes_channel, s.interval_freq, intervals, stop)
 
 	start := time.Now()
 	end := time.After(s.runtime_duration)
@@ -190,10 +194,13 @@ notifier:
 	if err != nil {
 		Error("Could not create file for measurements")
 	}
-	file.Write([]byte("time,bytes\n"))
+	file.Write([]byte("time,duration,bytes\n"))
+	before := start
 	for itv := range intervals {
 		elapsed := itv.time.Sub(start)
-		file.Write([]byte(fmt.Sprintf("%d,%d\n", elapsed.Milliseconds(), itv.bytes)))
+		duration := itv.time.Sub(before)
+		file.Write([]byte(fmt.Sprintf("%d,%d,%d\n", elapsed.Milliseconds(), duration.Milliseconds(), itv.bytes)))
+		before = itv.time
 	}
 
 

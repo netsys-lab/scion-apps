@@ -39,6 +39,12 @@ func main() {
 						Usage:       "duration for the server to receive packets\n\t\tfrom the client",
 						DefaultText: "1s",
 					},
+					&cli.DurationFlag{
+						Name:        "interval",
+						Aliases:     []string{"t"},
+						Usage:       "interval in which measurment data should be polled",
+						DefaultText: "100ms",
+					},
 					&cli.IntFlag{
 						Name:        "packet-size",
 						Aliases:     []string{"s"},
@@ -57,6 +63,9 @@ func main() {
 					}
 					if c.IsSet("duration") {
 						serverSpawner = serverSpawner.RuntimeDuration(c.Duration("duration"))
+					}
+					if c.IsSet("interval") {
+						serverSpawner = serverSpawner.RuntimeDuration(c.Duration("interval"))
 					}
 					if c.IsSet("packet-size") {
 						serverSpawner = serverSpawner.PacketSize(c.Int("packet-size"))
