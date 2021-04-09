@@ -93,6 +93,12 @@ func main() {
 						Usage:       "the size of the packets in byte sent to\n\t\tthe server",
 						DefaultText: "1208",
 					},
+					&cli.IntFlag{
+						Name:        "parallel",
+						Aliases:     []string{"P"},
+						Usage:       "how many senders are sending in parallel on each path",
+						DefaultText: "8",
+					},
 					&cli.BoolFlag{
 						Name:        "single-path",
 						Aliases:     []string{"1"},
@@ -120,6 +126,10 @@ func main() {
 					var clientSpawner = NewSpateClientSpawner(c.String("server-address"))
 					if c.IsSet("packet-size") {
 						clientSpawner = clientSpawner.PacketSize(c.Int("packet-size"))
+					}
+
+					if c.IsSet("parallel") {
+						clientSpawner = clientSpawner.Parallel(c.Int("parallel"))
 					}
 
 					if c.IsSet("single-path") {

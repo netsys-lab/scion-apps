@@ -18,6 +18,7 @@ type SpateClientSpawner struct {
 	single_path		bool
 	interactive		bool
 	bandwidth 		int64
+	parallel		int
 }
 
 // e.g. NewSpateClientSpawner("16-ffaa:0:1001,[172.31.0.23]:1337")
@@ -28,6 +29,7 @@ func NewSpateClientSpawner(server_address string) SpateClientSpawner {
 		single_path:    false,
 		interactive:	false,
 		bandwidth:      0,
+		parallel:		8,
 	}
 }
 
@@ -38,6 +40,11 @@ func (s SpateClientSpawner) ServerAddress(server_address string) SpateClientSpaw
 
 func (s SpateClientSpawner) PacketSize(packet_size int) SpateClientSpawner {
 	s.packet_size = packet_size
+	return s
+}
+
+func (s SpateClientSpawner) Parallel(parallel int) SpateClientSpawner {
+	s.parallel = parallel
 	return s
 }
 
@@ -64,7 +71,7 @@ func (s SpateClientSpawner) Spawn() error {
 		return err
 	}
 
-	paths := []snet.Path{nil}
+	paths := []snet.Path{}
 	if s.interactive {
 	selection:
 		for {
@@ -123,7 +130,7 @@ func (s SpateClientSpawner) Spawn() error {
 		// Set selected singular path
 		Info("Creating new connection on path %v...", path)
 		appnet.SetPath(serverAddr, path)
-		for i :=0; i < 8; i++ {
+		for i :=0; i < s.parallel; i++ {
 			conn, err := appnet.DialAddrUDP(serverAddr)
 			// Checking on err != nil will not work here as non-critical errors are returned
 			if conn != nil {
@@ -145,7 +152,7 @@ func (s SpateClientSpawner) Spawn() error {
 	var wg sync.WaitGroup
 	for _, conn := range conns {
 		// Spawn new thread
-		wg.Add(1)
+		wg.Add(2)
 		Info("Spawn Connection!")
 		go workerThread(conn, counter, stop, &wg, s)
 	}
