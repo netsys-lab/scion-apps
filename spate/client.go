@@ -125,22 +125,6 @@ func (s SpateClientSpawner) Spawn() error {
 	bytes_sent := 0
 	packets_sent := 0
 	complete := make(chan struct{}, len(paths))
-	var conns []*snet.Conn
-	for _, path := range paths {
-		// Set selected singular path
-		Info("Creating new connection on path %v...", path)
-		appnet.SetPath(serverAddr, path)
-		for i :=0; i < s.parallel; i++ {
-			conn, err := appnet.DialAddrUDP(serverAddr)
-			// Checking on err != nil will not work here as non-critical errors are returned
-			if conn != nil {
-				go awaitCompletion(conn, complete)
-				conns = append(conns, conn)
-			} else {
-				Warn("Connection on path %v failed: %v", path, err)
-			}
-		}
-	}
 
 	counter := make(chan int, 1024)
 	stop := make(chan struct{}, 1)
@@ -150,15 +134,17 @@ func (s SpateClientSpawner) Spawn() error {
 	Info("Starting sending data for measurements...")
 	start := time.Now()
 	var wg sync.WaitGroup
-	for _, conn := range conns {
-		// Spawn new thread
-		wg.Add(2)
-		Info("Spawn Connection!")
-		go workerThread(conn, counter, stop, &wg, s)
+
+	for _, path := range paths {
+		// Set selected singular path
+		Info("Creating new connection on path %v...", path)
+		appnet.SetPath(serverAddr, path)
+
+		go operatorThread(serverAddr, complete, counter, stop, &wg, s)
 	}
 
 	closed_conn := 0
-	total_conn := len(conns)
+	total_conn := len(paths) * s.parallel
 runner:
 	for {
 		select {
@@ -200,33 +186,66 @@ runner:
 	return nil
 }
 
-func workerThread(conn *snet.Conn, counter chan int, stop chan struct{}, finalize *sync.WaitGroup, spawner SpateClientSpawner) {
-	var sleep_duration int64
-	defer finalize.Done()
-
+func operatorThread(serverAddr *snet.UDPAddr, complete chan struct{}, counter chan int, stop chan struct{}, finalize *sync.WaitGroup, spawner SpateClientSpawner) {
+	target_duration := time.Duration((float64(spawner.packet_size*8) / float64(spawner.bandwidth) * float64(spawner.parallel)) * float64(time.Second))
+	data_cs := make([]chan *[]byte, spawner.parallel)
+	reply := make(chan struct{}, spawner.parallel)
 	rand := NewFastRand(uint64(spawner.packet_size))
-	control_points := make(chan BandwidthControlPoint, 1024)
-	//go SimpleBandwidthControl(control_points, &sleep_duration, finalize, spawner)
-	go PidBandwidthControl(control_points, &sleep_duration, finalize, spawner)
 
+	for i, _ := range data_cs {
+		data_cs[i] = make(chan *[]byte, 1024)
+		conn, err := appnet.DialAddrUDP(serverAddr)
+		// Checking on err != nil will not work here as non-critical errors are returned
+		if conn != nil {
+			go awaitCompletion(conn, complete)
+		} else {
+			Warn("Connection on path failed: %v", err)
+		}
+		go workerThread(conn, counter, stop, data_cs[i], reply)
+	}
+
+	sum_error := time.Duration(0)
+
+	for {
+		start := time.Now()
+		for _, c := range data_cs {
+			c <- rand.Get()
+		}
+		packets := 0
+		for _ = range reply {
+			packets += 1
+			if packets >= spawner.parallel {
+				break
+			}
+		}
+		end := time.Now()
+		duration := end.Sub(start)
+		sum_error += target_duration - duration
+		// fmt.Println("Sending took ", duration)
+		// fmt.Println("Supposed to take ", target_duration)
+		if spawner.bandwidth > 0 && sum_error > 0 {
+			sum_error = target_duration - duration
+			//fmt.Println("Waiting ", target_duration - duration)
+			time.Sleep(target_duration - duration)
+		}
+	}
+}
+
+func workerThread(conn *snet.Conn, counter chan int, stop chan struct{}, data chan *[]byte, reply chan struct{}) {
 worker:
 	for {
 		select {
 		case <-stop:
 			break worker
-		default:
-			sent_bytes, err := conn.Write(*rand.Get())
+		case dat := <- data:
+			sent_bytes, err := conn.Write(*dat)
 			if err != nil {
 				Error("Sending data failed: %v", err)
 				break
 			}
 
-			control_points <- BandwidthControlPoint{sent_bytes: sent_bytes, timestamp: time.Now()}
 			counter <- sent_bytes
-
-			if sleep_duration > 0 {
-				time.Sleep(time.Duration(sleep_duration))
-			}
+			reply <- struct {}{}
 		}
 	}
 	//close(control_points)
