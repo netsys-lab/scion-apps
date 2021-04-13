@@ -65,7 +65,7 @@ func main() {
 						serverSpawner = serverSpawner.RuntimeDuration(c.Duration("duration"))
 					}
 					if c.IsSet("interval") {
-						serverSpawner = serverSpawner.RuntimeDuration(c.Duration("interval"))
+						serverSpawner = serverSpawner.IntervalFrequency(c.Duration("interval"))
 					}
 					if c.IsSet("packet-size") {
 						serverSpawner = serverSpawner.PacketSize(c.Int("packet-size"))

@@ -225,7 +225,7 @@ func operatorThread(serverAddr *snet.UDPAddr, complete chan struct{}, counter ch
 		// fmt.Println("Supposed to take ", target_duration)
 		if spawner.bandwidth > 0 && sum_error > 0 {
 			sum_error = target_duration - duration
-			//fmt.Println("Waiting ", target_duration - duration)
+			// fmt.Println("Waiting ", target_duration - duration)
 			time.Sleep(target_duration - duration)
 		}
 	}
