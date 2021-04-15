@@ -201,37 +201,44 @@ func operatorThread(serverAddr *snet.UDPAddr, complete chan struct{}, counter ch
 		} else {
 			Warn("Connection on path failed: %v", err)
 		}
-		go workerThread(conn, counter, stop, data_cs[i], reply)
+		if spawner.bandwidth > 0 {
+			go workerThread(conn, counter, stop, data_cs[i], reply, false)
+		} else {
+			go workerThread(conn, counter, stop, data_cs[i], reply, true)
+		}
 	}
 
 	sum_error := time.Duration(0)
 
 	for {
 		start := time.Now()
+		val := rand.Get()
 		for _, c := range data_cs {
-			c <- rand.Get()
+			c <- val
 		}
-		packets := 0
-		for _ = range reply {
-			packets += 1
-			if packets >= spawner.parallel {
-				break
+		if spawner.bandwidth > 0 {
+			packets := 0
+			for _ = range reply {
+				packets += 1
+				if packets >= spawner.parallel {
+					break
+				}
 			}
-		}
-		end := time.Now()
-		duration := end.Sub(start)
-		sum_error += target_duration - duration
-		// fmt.Println("Sending took ", duration)
-		// fmt.Println("Supposed to take ", target_duration)
-		if spawner.bandwidth > 0 && sum_error > 0 {
-			sum_error = target_duration - duration
-			// fmt.Println("Waiting ", target_duration - duration)
-			time.Sleep(target_duration - duration)
+			end := time.Now()
+			duration := end.Sub(start)
+			sum_error += target_duration - duration
+			// fmt.Println("Sending took ", duration)
+			// fmt.Println("Supposed to take ", target_duration)
+			if sum_error > 0 {
+				sum_error = target_duration - duration
+				// fmt.Println("Waiting ", target_duration - duration)
+				time.Sleep(target_duration - duration)
+			}
 		}
 	}
 }
 
-func workerThread(conn *snet.Conn, counter chan int, stop chan struct{}, data chan *[]byte, reply chan struct{}) {
+func workerThread(conn *snet.Conn, counter chan int, stop chan struct{}, data chan *[]byte, reply chan struct{}, skip bool) {
 worker:
 	for {
 		select {
@@ -245,6 +252,9 @@ worker:
 			}
 
 			counter <- sent_bytes
+			if skip {
+				continue worker
+			}
 			reply <- struct {}{}
 		}
 	}
