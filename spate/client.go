@@ -140,7 +140,21 @@ func (s SpateClientSpawner) Spawn() error {
 		Info("Creating new connection on path %v...", path)
 		appnet.SetPath(serverAddr, path)
 
-		go operatorThread(serverAddr, complete, counter, stop, &wg, s)
+		// Let's take care of appnet here and ensure that we dare not create multiple connections in parallel
+		var connections = make([]*snet.Conn, s.parallel)
+
+		for i := 0; i < s.parallel; i++ {
+			conn, err := appnet.DialAddrUDP(serverAddr)
+			// Checking on err != nil will not work here as non-critical errors are returned
+			if conn != nil {
+				go awaitCompletion(conn, complete)
+				connections[i] = conn
+			} else {
+				Warn("Connection on path failed: %v", err)
+			}
+		}
+
+		go operatorThread(connections, complete, counter, stop, &wg, s)
 	}
 
 	closed_conn := 0
@@ -186,7 +200,7 @@ runner:
 	return nil
 }
 
-func operatorThread(serverAddr *snet.UDPAddr, complete chan struct{}, counter chan int, stop chan struct{}, finalize *sync.WaitGroup, spawner SpateClientSpawner) {
+func operatorThread(conns []*snet.Conn, complete chan struct{}, counter chan int, stop chan struct{}, finalize *sync.WaitGroup, spawner SpateClientSpawner) {
 	target_duration := time.Duration((float64(spawner.packet_size*8) / float64(spawner.bandwidth) * float64(spawner.parallel)) * float64(time.Second))
 	data_cs := make([]chan *[]byte, spawner.parallel)
 	reply := make(chan struct{}, spawner.parallel)
@@ -194,17 +208,10 @@ func operatorThread(serverAddr *snet.UDPAddr, complete chan struct{}, counter ch
 
 	for i, _ := range data_cs {
 		data_cs[i] = make(chan *[]byte, 1024)
-		conn, err := appnet.DialAddrUDP(serverAddr)
-		// Checking on err != nil will not work here as non-critical errors are returned
-		if conn != nil {
-			go awaitCompletion(conn, complete)
-		} else {
-			Warn("Connection on path failed: %v", err)
-		}
 		if spawner.bandwidth > 0 {
-			go workerThread(conn, counter, stop, data_cs[i], reply, false)
+			go workerThread(conns[i], counter, stop, data_cs[i], reply, false)
 		} else {
-			go workerThread(conn, counter, stop, data_cs[i], reply, true)
+			go workerThread(conns[i], counter, stop, data_cs[i], reply, true)
 		}
 	}
 
