@@ -129,7 +129,8 @@ func (s SpateServerSpawner) Spawn() error {
 	signal.Notify(cancel, os.Interrupt)
 
 
-	recv_bytes_channel := make(chan int, 30720)
+	// 4 MiB stack channel
+	recv_bytes_channel := make(chan int, 524288)
 	intervals := make(chan IntervalElement, s.runtime_duration.Milliseconds() / 100)
 	stop := make(chan struct{}, 1)
 	go clock(recv_bytes_channel, s.interval_freq, intervals, stop)
