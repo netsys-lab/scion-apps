@@ -55,7 +55,7 @@ type roundRobinSelector struct {
 	current int
 }
 
-func (s *roundRobinSelector) Path() *pan.Path {
+func (s *roundRobinSelector) Path(remote pan.UDPAddr) *pan.Path {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -87,7 +87,7 @@ type randomSelector struct {
 	paths []*pan.Path
 }
 
-func (s *randomSelector) Path() *pan.Path {
+func (s *randomSelector) Path(remote pan.UDPAddr) *pan.Path {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 

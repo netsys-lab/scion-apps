@@ -93,7 +93,7 @@ func (c *dialedConn) RemoteAddr() net.Addr {
 func (c *dialedConn) Write(b []byte) (int, error) {
 	var path *Path
 	if c.local.IA != c.remote.IA {
-		path = c.Selector.Path()
+		path = c.Selector.Path(c.remote)
 		if path == nil {
 			return 0, errNoPathTo(c.remote.IA)
 		}

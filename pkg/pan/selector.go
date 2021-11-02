@@ -34,7 +34,7 @@ import (
 // SetPaths is called again.
 // OnPathDown is invoked when SCMP path down notifications are received.
 type Selector interface {
-	Path() *Path
+	Path(UDPAddr) *Path
 	SetPaths(UDPAddr, []*Path)
 	OnPathDown(PathFingerprint, PathInterface)
 	Close() error
@@ -53,7 +53,7 @@ type DefaultSelector struct {
 	current int
 }
 
-func (s *DefaultSelector) Path() *Path {
+func (s *DefaultSelector) Path(remote UDPAddr) *Path {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -124,7 +124,7 @@ func (s *PingingSelector) SetActive(numActive int) {
 	atomic.SwapInt64(&s.numActive, int64(numActive))
 }
 
-func (s *PingingSelector) Path() *Path {
+func (s *PingingSelector) Path(remote UDPAddr) *Path {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
