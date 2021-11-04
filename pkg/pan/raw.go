@@ -74,10 +74,10 @@ func (c *baseUDPConn) SetWriteDeadline(t time.Time) error {
 func (c *baseUDPConn) writeMsg(src, dst UDPAddr, path *Path, b []byte) (int, error) {
 	// assert:
 	if src.IA != dst.IA && path == nil {
-		panic("writeMsg: need path when src.IA != dst.IA")
+		panic(fmt.Sprintf("writeMsg: need path when src.IA != dst.IA : %s != %s", src.IA, dst.IA))
 	}
 	if path != nil && src.IA != path.Source {
-		panic("writeMsg: src.IA != path.Source")
+		panic(fmt.Sprintf("writeMsg: src.IA != path.Source: %s != %s", src.IA, path.Source))
 	}
 	if path != nil && dst.IA != path.Destination {
 		panic("writeMsg: dst.IA != path.Destination")
