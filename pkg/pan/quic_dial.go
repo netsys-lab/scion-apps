@@ -72,6 +72,30 @@ func DialQUIC(ctx context.Context,
 	return &QUICSession{session, conn}, nil
 }
 
+func DialQUICStats(ctx context.Context, local netaddr.IPPort, remote UDPAddr,
+	policy Policy, selector Selector, host string, tlsConf *tls.Config,
+	quicConf *quic.Config, stats chan ConnStats) (*QUICSession, error) {
+
+	conn, err := DialUDP(ctx, local, remote, policy, selector)
+	if err != nil {
+		return nil, err
+	}
+	dialedConn := conn.(*dialedConn)
+	dialedConn.stats = stats
+	pconn := connectedPacketConn{dialedConn}
+	// HACK: we silence the log here to shut up quic-go's warning about trying to
+	// set receive buffer size (it's not a UDPConn, we know).
+	silenceLog()
+	defer unsilenceLog()
+	session, err := quic.DialContext(ctx, pconn, remote, host, tlsConf, quicConf)
+	if err != nil {
+		return nil, err
+	}
+	// TODO figure out whether we shouldn't pass pconn or at least
+	// dialedConn instead of conn here:
+	return &QUICSession{session, conn}, nil
+}
+
 // DialQUICEarly establishes a new 0-RTT QUIC connection to a server. Analogous to DialQUIC.
 func DialQUICEarly(ctx context.Context,
 	local netaddr.IPPort, remote UDPAddr, policy Policy, selector Selector,

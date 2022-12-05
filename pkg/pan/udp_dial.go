@@ -17,9 +17,19 @@ package pan
 import (
 	"context"
 	"net"
+	"time"
 
 	"inet.af/netaddr"
 )
+
+type ConnStats struct {
+	Start    time.Time
+	Complete time.Time
+	Error    error
+	Path     *Path
+	Bytes    int
+	WasRead  bool
+}
 
 // Conn represents a _dialed_ connection.
 type Conn interface {
@@ -77,6 +87,22 @@ func DialUDP(ctx context.Context, local netaddr.IPPort, remote UDPAddr,
 	}, nil
 }
 
+// DialUDPStats is equivalent to DialUDP, except that statistics are
+// written to the stats channel on every Read or Write on Conn
+//
+// NB: Reads and Writes on Conn block when the stats channel is
+// blocked.
+func DialUDPStats(ctx context.Context, local netaddr.IPPort, remote UDPAddr,
+	policy Policy, selector Selector, stats chan ConnStats) (Conn, error) {
+	conn, err := DialUDP(ctx, local, remote, policy, selector)
+	if err != nil {
+		return nil, err
+	}
+	dialedConn := conn.(*dialedConn)
+	dialedConn.stats = stats
+	return dialedConn, nil
+}
+
 type dialedConn struct {
 	baseUDPConn
 
@@ -84,6 +110,7 @@ type dialedConn struct {
 	remote     UDPAddr
 	subscriber *pathRefreshSubscriber
 	selector   Selector
+	stats      chan ConnStats
 }
 
 func (c *dialedConn) SetPolicy(policy Policy) {
@@ -101,28 +128,80 @@ func (c *dialedConn) RemoteAddr() net.Addr {
 }
 
 func (c *dialedConn) Write(b []byte) (int, error) {
+	var stats ConnStats
+	if c.stats != nil {
+		stats.Start = time.Now()
+	}
 	var path *Path
 	if c.local.IA != c.remote.IA {
 		path = c.selector.Path()
 		if path == nil {
-			return 0, errNoPathTo(c.remote.IA)
+			err := errNoPathTo(c.remote.IA)
+			if c.stats != nil {
+				stats.Error = err
+				stats.Complete = time.Now()
+				c.stats <- stats
+			}
+			return 0, err
 		}
 	}
-	return c.baseUDPConn.writeMsg(c.local, c.remote, path, b)
+	n, err := c.baseUDPConn.writeMsg(c.local, c.remote, path, b)
+	if c.stats != nil {
+		stats.Path = path
+		stats.Error = err
+		stats.Bytes = n
+		stats.Complete = time.Now()
+		c.stats <- stats
+	}
+	return n, err
 }
 
 func (c *dialedConn) WriteVia(path *Path, b []byte) (int, error) {
-	return c.baseUDPConn.writeMsg(c.local, c.remote, path, b)
+	var stats ConnStats
+	if c.stats != nil {
+		stats.Start = time.Now()
+	}
+	n, err := c.baseUDPConn.writeMsg(c.local, c.remote, path, b)
+	if c.stats != nil {
+		stats.Path = path
+		stats.Error = err
+		stats.Bytes = n
+		stats.Complete = time.Now()
+		c.stats <- stats
+	}
+	return n, err
 }
 
 func (c *dialedConn) Read(b []byte) (int, error) {
 	for {
-		n, remote, _, err := c.baseUDPConn.readMsg(b)
+		var stats ConnStats
+		if c.stats != nil {
+			stats.Start = time.Now()
+			stats.WasRead = true
+		}
+		n, remote, fwPath, err := c.baseUDPConn.readMsg(b)
 		if err != nil {
+			if c.stats != nil {
+				stats.Error = err
+				stats.Bytes = n
+				stats.Complete = time.Now()
+				c.stats <- stats
+			}
+
 			return n, err
 		}
 		if remote != c.remote {
 			continue // connected! Ignore spurious packets from wrong source
+		}
+		// FIXME  we drop the packet if there is something wrong with the reversePathFromForwardingPath in readVia
+		// these semantics are different though:
+		if c.stats != nil {
+			path, err := reversePathFromForwardingPath(c.remote.IA, c.local.IA, fwPath)
+			stats.Path = path
+			stats.Error = err
+			stats.Bytes = n
+			stats.Complete = time.Now()
+			c.stats <- stats
 		}
 		return n, err
 	}
@@ -130,8 +209,19 @@ func (c *dialedConn) Read(b []byte) (int, error) {
 
 func (c *dialedConn) ReadVia(b []byte) (int, *Path, error) {
 	for {
+		var stats ConnStats
+		if c.stats != nil {
+			stats.Start = time.Now()
+			stats.WasRead = true
+		}
 		n, remote, fwPath, err := c.baseUDPConn.readMsg(b)
 		if err != nil {
+			if c.stats != nil {
+				stats.Error = err
+				stats.Bytes = n
+				stats.Complete = time.Now()
+				c.stats <- stats
+			}
 			return n, nil, err
 		}
 		if remote != c.remote {
@@ -140,6 +230,14 @@ func (c *dialedConn) ReadVia(b []byte) (int, *Path, error) {
 		path, err := reversePathFromForwardingPath(c.remote.IA, c.local.IA, fwPath)
 		if err != nil {
 			continue // just drop the packet if there is something wrong with the path
+		}
+		if c.stats != nil {
+			path, err := reversePathFromForwardingPath(c.remote.IA, c.local.IA, fwPath)
+			stats.Path = path
+			stats.Error = err
+			stats.Bytes = n
+			stats.Complete = time.Now()
+			c.stats <- stats
 		}
 		return n, path, nil
 	}
