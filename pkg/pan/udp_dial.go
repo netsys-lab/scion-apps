@@ -22,15 +22,6 @@ import (
 	"inet.af/netaddr"
 )
 
-type ConnStats struct {
-	Start    time.Time
-	Complete time.Time
-	Error    error
-	Path     *Path
-	Bytes    int
-	WasRead  bool
-}
-
 // Conn represents a _dialed_ connection.
 type Conn interface {
 	net.Conn
@@ -129,8 +120,15 @@ func (c *dialedConn) RemoteAddr() net.Addr {
 
 func (c *dialedConn) Write(b []byte) (int, error) {
 	var stats ConnStats
+
+	// It might also make sense to note the time only after the
+	// selector has returned 🤔
 	if c.stats != nil {
 		stats.Start = time.Now()
+		defer func() {
+			stats.Complete = time.Now()
+			c.stats <- stats
+		}()
 	}
 	var path *Path
 	if c.local.IA != c.remote.IA {
@@ -139,8 +137,6 @@ func (c *dialedConn) Write(b []byte) (int, error) {
 			err := errNoPathTo(c.remote.IA)
 			if c.stats != nil {
 				stats.Error = err
-				stats.Complete = time.Now()
-				c.stats <- stats
 			}
 			return 0, err
 		}
@@ -150,8 +146,6 @@ func (c *dialedConn) Write(b []byte) (int, error) {
 		stats.Path = path
 		stats.Error = err
 		stats.Bytes = n
-		stats.Complete = time.Now()
-		c.stats <- stats
 	}
 	return n, err
 }
@@ -160,14 +154,16 @@ func (c *dialedConn) WriteVia(path *Path, b []byte) (int, error) {
 	var stats ConnStats
 	if c.stats != nil {
 		stats.Start = time.Now()
+		stats.Path = path
+		defer func() {
+			stats.Complete = time.Now()
+			c.stats <- stats
+		}()
 	}
 	n, err := c.baseUDPConn.writeMsg(c.local, c.remote, path, b)
 	if c.stats != nil {
-		stats.Path = path
 		stats.Error = err
 		stats.Bytes = n
-		stats.Complete = time.Now()
-		c.stats <- stats
 	}
 	return n, err
 }
@@ -178,30 +174,30 @@ func (c *dialedConn) Read(b []byte) (int, error) {
 		if c.stats != nil {
 			stats.Start = time.Now()
 			stats.WasRead = true
-		}
-		n, remote, fwPath, err := c.baseUDPConn.readMsg(b)
-		if err != nil {
-			if c.stats != nil {
-				stats.Error = err
-				stats.Bytes = n
+			defer func() {
 				stats.Complete = time.Now()
 				c.stats <- stats
-			}
-
+			}()
+		}
+		n, remote, fwPath, err := c.baseUDPConn.readMsg(b)
+		if c.stats != nil {
+			stats.Error = err
+			stats.Bytes = n
+		}
+		if err != nil {
 			return n, err
 		}
 		if remote != c.remote {
 			continue // connected! Ignore spurious packets from wrong source
 		}
-		// FIXME  we drop the packet if there is something wrong with the reversePathFromForwardingPath in readVia
-		// these semantics are different though:
 		if c.stats != nil {
-			path, err := reversePathFromForwardingPath(c.remote.IA, c.local.IA, fwPath)
-			stats.Path = path
-			stats.Error = err
-			stats.Bytes = n
-			stats.Complete = time.Now()
-			c.stats <- stats
+			// NOTE: in ReadVia, an error from
+			// reversePathFromForwardingPath causes the
+			// packet to be silently dropped and the loop
+			// simply continue'd. If we did the same here,
+			// we would change the control flow, depending
+			// on whether we have a stats channel or not.
+			stats.Path, stats.Error = reversePathFromForwardingPath(c.remote.IA, c.local.IA, fwPath)
 		}
 		return n, err
 	}
@@ -232,9 +228,7 @@ func (c *dialedConn) ReadVia(b []byte) (int, *Path, error) {
 			continue // just drop the packet if there is something wrong with the path
 		}
 		if c.stats != nil {
-			path, err := reversePathFromForwardingPath(c.remote.IA, c.local.IA, fwPath)
 			stats.Path = path
-			stats.Error = err
 			stats.Bytes = n
 			stats.Complete = time.Now()
 			c.stats <- stats

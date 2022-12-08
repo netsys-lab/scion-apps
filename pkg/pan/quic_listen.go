@@ -60,3 +60,20 @@ func ListenQUIC(ctx context.Context, local netaddr.IPPort, selector ReplySelecto
 		conn:     conn,
 	}, nil
 }
+
+// ListenQUICStats is equivalent to ListenQUIC, except that statistics
+// are written to the stats channel on every Read or Write to the
+// underlying UDP Listener
+//
+// NB: Reads and Writes to any connection will block when the stats
+// channel is blocked.
+func ListenQUICStats(ctx context.Context, local netaddr.IPPort, selector ReplySelector,
+	tlsConf *tls.Config, quicConfig *quic.Config, stats chan ConnStats) (quic.Listener, error) {
+	// this might be enough
+	l, err := ListenQUIC(ctx, local, selector, tlsConf, quicConfig)
+	if err != nil {
+		return nil, err
+	}
+	l.(closerListener).conn.(*listenConn).stats = stats
+	return l, nil
+}

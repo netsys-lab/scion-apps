@@ -72,6 +72,11 @@ func DialQUIC(ctx context.Context,
 	return &QUICSession{session, conn}, nil
 }
 
+// DialQUICStats is equivalent to DialQUIC, except that statistics are
+// written to the stats channel on every Read or Write on Conn
+//
+// NB: Reads and Writes on Conn block when the stats channel is
+// blocked.
 func DialQUICStats(ctx context.Context, local netaddr.IPPort, remote UDPAddr,
 	policy Policy, selector Selector, host string, tlsConf *tls.Config,
 	quicConf *quic.Config, stats chan ConnStats) (*QUICSession, error) {

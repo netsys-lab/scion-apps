@@ -88,11 +88,24 @@ func ListenUDP(ctx context.Context, local netaddr.IPPort,
 	}, nil
 }
 
+func ListenUDPStats(ctx context.Context, local netaddr.IPPort,
+	selector ReplySelector, stats chan ConnStats) (ListenConn, error) {
+
+	listenconn, err := ListenUDP(ctx, local, selector)
+	if err != nil {
+		return nil, err
+	}
+
+	listenconn.(*listenConn).stats = stats
+	return listenconn, nil
+}
+
 type listenConn struct {
 	baseUDPConn
 
 	local    UDPAddr
 	selector ReplySelector
+	stats    chan ConnStats
 }
 
 func (c *listenConn) LocalAddr() net.Addr {
@@ -105,32 +118,86 @@ func (c *listenConn) ReadFrom(b []byte) (int, net.Addr, error) {
 }
 
 func (c *listenConn) ReadFromVia(b []byte) (int, UDPAddr, *Path, error) {
+	var stats ConnStats
+	if c.stats != nil {
+		stats.Start = time.Now()
+		stats.WasRead = true
+		defer func() {
+			stats.Complete = time.Now()
+			c.stats <- stats
+		}()
+	}
 	n, remote, fwPath, err := c.baseUDPConn.readMsg(b)
+	if c.stats != nil {
+		stats.Error = err
+		stats.Bytes = n
+	}
 	if err != nil {
 		return n, UDPAddr{}, nil, err
 	}
 	path, err := reversePathFromForwardingPath(remote.IA, c.local.IA, fwPath)
+	if c.stats != nil {
+		stats.Path = path
+		stats.Error = err
+	}
 	c.selector.Record(remote, path)
 	return n, remote, path, err
 }
 
 func (c *listenConn) WriteTo(b []byte, dst net.Addr) (int, error) {
+	var stats ConnStats
+	if c.stats != nil {
+		stats.Start = time.Now()
+		defer func() {
+			stats.Complete = time.Now()
+			c.stats <- stats
+		}()
+	}
 	sdst, ok := dst.(UDPAddr)
 	if !ok {
-		return 0, errBadDstAddress
+		err := errBadDstAddress
+		if c.stats != nil {
+			stats.Error = err
+		}
+		return 0, err
 	}
 	var path *Path
 	if c.local.IA != sdst.IA {
 		path = c.selector.Path(sdst)
 		if path == nil {
-			return 0, errNoPathTo(sdst.IA)
+			err := errNoPathTo(sdst.IA)
+			if c.stats != nil {
+				stats.Error = err
+			}
+			return 0, err
 		}
 	}
-	return c.WriteToVia(b, sdst, path)
+	n, err := c.WriteToVia(b, sdst, path)
+	if c.stats != nil {
+		stats.Path = path
+		stats.Error = err
+		stats.Bytes = n
+	}
+	return n, err
 }
 
 func (c *listenConn) WriteToVia(b []byte, dst UDPAddr, path *Path) (int, error) {
-	return c.baseUDPConn.writeMsg(c.local, dst, path, b)
+	var stats ConnStats
+	if c.stats != nil {
+		stats.Start = time.Now()
+		stats.Path = path
+		defer func() {
+			stats.Complete = time.Now()
+			c.stats <- stats
+		}()
+	}
+	n, err := c.baseUDPConn.writeMsg(c.local, dst, path, b)
+	if c.stats != nil {
+		stats.Error = err
+		stats.Bytes = n
+	}
+	return n, err
+
 }
 
 func (c *listenConn) Close() error {
