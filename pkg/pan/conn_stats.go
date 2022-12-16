@@ -19,10 +19,11 @@ import (
 )
 
 type ConnStats struct {
-	Start    time.Time
-	Complete time.Time
-	Error    error
-	Path     *Path
-	Bytes    int
-	WasRead  bool
+	Start            time.Time
+	SelectorComplete time.Time
+	Complete         time.Time
+	Error            error
+	Path             *Path
+	Bytes            int
+	WasRead          bool
 }

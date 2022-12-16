@@ -121,6 +121,7 @@ func (c *listenConn) ReadFromVia(b []byte) (int, UDPAddr, *Path, error) {
 	var stats ConnStats
 	if c.stats != nil {
 		stats.Start = time.Now()
+		stats.SelectorComplete = stats.Start
 		stats.WasRead = true
 		defer func() {
 			stats.Complete = time.Now()
@@ -164,6 +165,9 @@ func (c *listenConn) WriteTo(b []byte, dst net.Addr) (int, error) {
 	var path *Path
 	if c.local.IA != sdst.IA {
 		path = c.selector.Path(sdst)
+		if c.stats != nil {
+			stats.SelectorComplete = time.Now()
+		}
 		if path == nil {
 			err := errNoPathTo(sdst.IA)
 			if c.stats != nil {
@@ -185,6 +189,7 @@ func (c *listenConn) WriteToVia(b []byte, dst UDPAddr, path *Path) (int, error) 
 	var stats ConnStats
 	if c.stats != nil {
 		stats.Start = time.Now()
+		stats.SelectorComplete = stats.Start
 		stats.Path = path
 		defer func() {
 			stats.Complete = time.Now()

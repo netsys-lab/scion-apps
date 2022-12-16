@@ -121,8 +121,6 @@ func (c *dialedConn) RemoteAddr() net.Addr {
 func (c *dialedConn) Write(b []byte) (int, error) {
 	var stats ConnStats
 
-	// It might also make sense to note the time only after the
-	// selector has returned 🤔
 	if c.stats != nil {
 		stats.Start = time.Now()
 		defer func() {
@@ -133,6 +131,9 @@ func (c *dialedConn) Write(b []byte) (int, error) {
 	var path *Path
 	if c.local.IA != c.remote.IA {
 		path = c.selector.Path()
+		if c.stats != nil {
+			stats.SelectorComplete = time.Now()
+		}
 		if path == nil {
 			err := errNoPathTo(c.remote.IA)
 			if c.stats != nil {
@@ -155,6 +156,7 @@ func (c *dialedConn) WriteVia(path *Path, b []byte) (int, error) {
 	if c.stats != nil {
 		stats.Start = time.Now()
 		stats.Path = path
+		stats.SelectorComplete = stats.Start
 		defer func() {
 			stats.Complete = time.Now()
 			c.stats <- stats
@@ -173,6 +175,7 @@ func (c *dialedConn) Read(b []byte) (int, error) {
 		var stats ConnStats
 		if c.stats != nil {
 			stats.Start = time.Now()
+			stats.SelectorComplete = stats.Start
 			stats.WasRead = true
 			defer func() {
 				stats.Complete = time.Now()
@@ -208,6 +211,7 @@ func (c *dialedConn) ReadVia(b []byte) (int, *Path, error) {
 		var stats ConnStats
 		if c.stats != nil {
 			stats.Start = time.Now()
+			stats.SelectorComplete = stats.Start
 			stats.WasRead = true
 		}
 		n, remote, fwPath, err := c.baseUDPConn.readMsg(b)
