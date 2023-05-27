@@ -3,9 +3,10 @@ module github.com/netsec-ethz/scion-apps
 go 1.21
 
 require (
-	github.com/creack/pty v1.1.17
+	github.com/alecthomas/kingpin/v2 v2.3.2
+	github.com/creack/pty v1.1.18
 	github.com/gorilla/handlers v1.5.1
-	github.com/inconshreveable/log15 v0.0.0-20180818164646-67afb5ed74ec
+	github.com/inconshreveable/log15 v2.16.0+incompatible
 	github.com/kormat/fmt15 v0.0.0-20181112140556-ee69fecb2656
 	github.com/mattn/go-sqlite3 v1.14.17
 	github.com/msteinert/pam v0.0.0-20190215180659-f29b9f28d6f9

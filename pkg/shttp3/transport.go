@@ -32,7 +32,7 @@ import (
 var DefaultTransport = &http3.RoundTripper{
 	Dial: (&Dialer{
 		Policy: nil,
-	}).Dial,
+	}).DialContext,
 }
 
 // Dialer dials a QUIC connection over SCION.

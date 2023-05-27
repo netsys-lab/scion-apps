@@ -28,6 +28,7 @@ import (
 
 	"github.com/netsec-ethz/scion-apps/pkg/pan"
 	"github.com/netsec-ethz/scion-apps/pkg/quicutil"
+	"github.com/quic-go/quic-go"
 )
 
 // DefaultTransport is the default RoundTripper that can be used for HTTP over

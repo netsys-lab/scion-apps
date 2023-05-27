@@ -25,6 +25,7 @@ import (
 
 	"github.com/netsec-ethz/scion-apps/pkg/pan"
 	"github.com/netsec-ethz/scion-apps/pkg/quicutil"
+	"github.com/quic-go/quic-go"
 )
 
 // dialSCION starts a client connection to the given SSH server over SCION using QUIC.
