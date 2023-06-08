@@ -20,6 +20,7 @@ import (
 	"net"
 	"net/netip"
 
+	//"github.com/netsec-ethz/scion-apps/pkg/pan"
 	"github.com/quic-go/quic-go"
 )
 
@@ -62,4 +63,19 @@ func ListenQUIC(
 		return nil, err
 	}
 	return &QUICListener{Listener: listener, Conn: conn}, nil
+}
+
+func ListenQUIC2(conn net.PacketConn, tlsConf *tls.Config, quicConfig *quic.Config) (*QUICListener, error) {
+	// conn has to be a pan.ListenConn created by pan.ListenUDP
+
+	listener, err := quic.Listen(conn, tlsConf, quicConfig)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return &QUICListener{
+		Listener: listener,
+		Conn:     conn,
+	}, nil
+
 }
