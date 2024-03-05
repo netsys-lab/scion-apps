@@ -29,14 +29,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/alecthomas/kingpin/v2"
 	"github.com/gorilla/handlers"
 	"github.com/quic-go/quic-go"
-<<<<<<< HEAD
 	"gopkg.in/alecthomas/kingpin.v2"
-=======
-	"inet.af/netaddr"
->>>>>>> 40b83c8 (update dependencies)
 
 	"github.com/netsec-ethz/scion-apps/pkg/pan"
 	"github.com/netsec-ethz/scion-apps/pkg/quicutil"

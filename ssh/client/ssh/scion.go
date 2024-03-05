@@ -20,7 +20,6 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/quic-go/quic-go"
 	"golang.org/x/crypto/ssh"
 
 	"github.com/netsec-ethz/scion-apps/pkg/pan"

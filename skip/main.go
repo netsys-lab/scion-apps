@@ -38,7 +38,6 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/alecthomas/kingpin/v2"
 	"github.com/gorilla/handlers"
 	"github.com/scionproto/scion/pkg/addr"
 	"gopkg.in/alecthomas/kingpin.v2"

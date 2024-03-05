@@ -20,30 +20,8 @@ import (
 	"net"
 	"net/netip"
 
-	//"github.com/netsec-ethz/scion-apps/pkg/pan"
 	"github.com/quic-go/quic-go"
 )
-
-// closerListener is a wrapper around quic.Listener that always closes the
-// underlying conn when closing the session.
-type closerListener struct {
-	quic.Listener
-	conn net.PacketConn
-}
-
-// Addr returns the local network addr that the server is listening on.
-func (l closerListener) Addr() net.Addr {
-	if c, ok := l.conn.(ListenConn); ok {
-		return c.LocalAddr()
-	}
-	return quic.Listener.Addr(l)
-}
-
-func (l closerListener) Close() error {
-	err := l.Listener.Close()
-	l.conn.Close()
-	return err
-}
 
 // ListenQUIC listens for QUIC connections on a SCION/UDP port.
 //
@@ -69,17 +47,12 @@ func ListenQUIC(ctx context.Context, local netip.AddrPort, selector ReplySelecto
 	return listener, nil
 }
 
-func ListenQUIC2(conn net.PacketConn, tlsConf *tls.Config, quicConfig *quic.Config) (quic.Listener, error) {
+func ListenQUIC2(conn net.PacketConn, tlsConf *tls.Config, quicConfig *quic.Config) (*quic.Listener, error) {
 	// conn has to be a pan.ListenConn created by pan.ListenUDP
 
 	listener, err := quic.Listen(conn, tlsConf, quicConfig)
 	if err != nil {
 		conn.Close()
-		return nil, err
 	}
-	return closerListener{
-		Listener: listener,
-		conn:     conn,
-	}, nil
-
+	return listener, err
 }
