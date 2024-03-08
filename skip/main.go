@@ -44,7 +44,6 @@ import (
 
 	"github.com/netsec-ethz/scion-apps/pkg/pan"
 	"github.com/netsec-ethz/scion-apps/pkg/quicutil"
-	"github.com/netsec-ethz/scion-apps/pkg/shttp"
 )
 
 var (
@@ -91,7 +90,12 @@ func main() {
 	kingpin.Flag("bind", "Address to bind on").Default("localhost:8888").TCPVar(&bindAddress)
 	kingpin.Parse()
 
-	transport, dialer := shttp.NewTransport(nil, nil)
+	selector, err := NewDebugSelector(time.Millisecond, pan.NewDefaultSelector())
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	transport, dialer := NewTransport(nil, selector, nil)
 
 	proxy := &proxyHandler{
 		transport: transport,
@@ -306,7 +310,7 @@ func (h *policyHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 type proxyHandler struct {
 	transport http.RoundTripper
-	dialer    *shttp.Dialer
+	dialer    *Dialer
 }
 
 func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -373,7 +377,7 @@ func interceptConnect(connect, next http.Handler) http.HandlerFunc {
 }
 
 type tunnelHandler struct {
-	dialer *shttp.Dialer
+	dialer *Dialer
 }
 
 func (h *tunnelHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
