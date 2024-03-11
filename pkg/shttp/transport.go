@@ -67,6 +67,7 @@ type Dialer struct {
 	Local      netip.AddrPort
 	QuicConfig *quic.Config
 	Policy     pan.Policy
+	Selector   pan.Selector // Experimental: The selector to be used when dialing a new QUIC connection
 	sessions   []*pan.QUICSession
 }
 
@@ -83,7 +84,12 @@ func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Con
 		return nil, err
 	}
 
-	session, err := pan.DialQUIC(ctx, d.Local, remote, d.Policy, nil, addr, tlsCfg, d.QuicConfig)
+	// Explicitly set Selector to default if nil. The same would happen somewhere in the underlying pan.DialUDP call anyway, but this way, the Dialer struct can be queried
+	if d.Selector == nil {
+		d.Selector = pan.NewDefaultSelector()
+	}
+
+	session, err := pan.DialQUIC(ctx, d.Local, remote, d.Policy, d.Selector, addr, tlsCfg, d.QuicConfig)
 	if err != nil {
 		return nil, err
 	}
