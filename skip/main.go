@@ -44,6 +44,7 @@ import (
 
 	"github.com/netsec-ethz/scion-apps/pkg/pan"
 	"github.com/netsec-ethz/scion-apps/pkg/quicutil"
+	"github.com/netsec-ethz/scion-apps/pkg/shttp"
 )
 
 var (
@@ -94,8 +95,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	transport, dialer := NewTransport(nil, selector, nil)
+	transport, dialer := shttp.NewTransport(nil, nil)
+	dialer.Selector = selector
 
 	proxy := &proxyHandler{
 		transport: transport,
@@ -310,7 +311,7 @@ func (h *policyHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 type proxyHandler struct {
 	transport http.RoundTripper
-	dialer    *Dialer
+	dialer    *shttp.Dialer
 }
 
 func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -377,7 +378,7 @@ func interceptConnect(connect, next http.Handler) http.HandlerFunc {
 }
 
 type tunnelHandler struct {
-	dialer *Dialer
+	dialer *shttp.Dialer
 }
 
 func (h *tunnelHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
