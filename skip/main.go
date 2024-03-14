@@ -39,12 +39,15 @@ import (
 	"time"
 
 	"github.com/gorilla/handlers"
+	"github.com/quic-go/quic-go"
 	"github.com/scionproto/scion/pkg/addr"
 	"gopkg.in/alecthomas/kingpin.v2"
 
 	"github.com/netsec-ethz/scion-apps/pkg/pan"
 	"github.com/netsec-ethz/scion-apps/pkg/quicutil"
 	"github.com/netsec-ethz/scion-apps/pkg/shttp"
+	"github.com/netsys-lab/pan-lua/extra"
+	"github.com/netsys-lab/pan-lua/lua"
 )
 
 var (
@@ -87,15 +90,40 @@ type skipPACTemplateParams struct {
 }
 
 func main() {
-	var bindAddress *net.TCPAddr
+	var (
+		bindAddress *net.TCPAddr
+		scriptFile  string
+		selector    pan.Selector
+		err         error
+		conf        quic.Config
+		lua_state   *lua.State
+	)
+	log.SetOutput(os.Stderr)
+	log.SetFlags(log.Lshortfile)
 	kingpin.Flag("bind", "Address to bind on").Default("localhost:8888").TCPVar(&bindAddress)
+	kingpin.Flag("script", "Lua script for path selection").StringVar(&scriptFile)
 	kingpin.Parse()
 
-	selector, err := NewDebugSelector(time.Millisecond, pan.NewDefaultSelector())
-	if err != nil {
-		log.Fatal(err)
+	if scriptFile == "" {
+		selector, err = NewDebugSelector(time.Millisecond, pan.NewDefaultSelector())
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		lua_state = lua.NewState()
+		msel := lua.NewMultiSelector(lua_state)
+		stats := lua.NewStats(lua_state)
+		mact := extra.NewAutoConnectionTracer(stats)
+		conf.Tracer = mact.TracerFunc
+		err = lua_state.LoadScript(scriptFile)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		selector = extra.NewSelector(msel)
 	}
-	transport, dialer := shttp.NewTransport(nil, nil)
+
+	transport, dialer := shttp.NewTransport(&conf, nil)
 	dialer.Selector = selector
 
 	proxy := &proxyHandler{
@@ -108,6 +136,9 @@ func main() {
 	policyHandler := &policyHandler{
 		output: dialer,
 	}
+	luaHandler := &luaHandler{
+		state: lua_state,
+	}
 
 	mux := http.NewServeMux()
 	apiMux := http.NewServeMux()
@@ -115,9 +146,11 @@ func main() {
 	apiMux.HandleFunc("/scionHosts", handleHostListRequest)
 	apiMux.HandleFunc("/pathUsage", handlePathUsageRequest)
 	apiMux.HandleFunc("/r", handleRedirectBackOrError)
+	apiMux.HandleFunc("/status", handleStatus)
 
 	apiMux.HandleFunc("/resolve", handleHostResolutionRequest)
 	apiMux.Handle("/setPolicy", policyHandler)
+	apiMux.Handle("/lua", luaHandler)
 
 	mux.Handle("localhost/", apiMux)
 	if bindAddress.IP != nil {
@@ -126,12 +159,18 @@ func main() {
 	mux.Handle("/", proxy) // everything else
 
 	handler := interceptConnect(tunnelHandler, mux)
-
 	server := &http.Server{
 		Addr:    bindAddress.String(),
 		Handler: handlers.LoggingHandler(os.Stdout, handler),
 	}
+	log.Println("started proxy")
 	log.Fatal(server.ListenAndServe())
+}
+
+func handleStatus(w http.ResponseWriter, req *http.Request) {
+	log.Printf("Status request from %s", req.RemoteAddr)
+	j, _ := json.Marshal(map[string]string{"status": "OK"})
+	_, _ = w.Write(j)
 }
 
 func handlePathUsageRequest(w http.ResponseWriter, req *http.Request) {
@@ -257,6 +296,17 @@ func isSCIONEnabled(ctx context.Context, host string) (bool, error) {
 		return false, nil
 	}
 	return true, nil
+}
+
+type luaHandler struct {
+	state *lua.State
+}
+
+func (h *luaHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	if req.Method == http.MethodGet {
+		w.WriteHeader(http.StatusOK)
+		io.Copy(w, strings.NewReader(h.state.GetString()))
+	}
 }
 
 type policyHandler struct {
