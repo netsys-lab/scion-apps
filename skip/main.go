@@ -95,7 +95,7 @@ func main() {
 		scriptFile  string
 		selector    pan.Selector
 		err         error
-		conf        quic.Config
+		conf        = &quic.Config{}
 		lua_state   *lua.State
 	)
 	log.SetOutput(os.Stderr)
@@ -123,7 +123,7 @@ func main() {
 		selector = extra.NewSelector(msel)
 	}
 
-	transport, dialer := shttp.NewTransport(&conf, nil)
+	transport, dialer := shttp.NewTransport(conf, nil)
 	dialer.Selector = selector
 
 	proxy := &proxyHandler{
@@ -137,7 +137,9 @@ func main() {
 		output: dialer,
 	}
 	luaHandler := &luaHandler{
-		state: lua_state,
+		state:  lua_state,
+		conf:   conf,
+		dialer: dialer,
 	}
 
 	mux := http.NewServeMux()
@@ -299,13 +301,34 @@ func isSCIONEnabled(ctx context.Context, host string) (bool, error) {
 }
 
 type luaHandler struct {
-	state *lua.State
+	state  *lua.State
+	conf   *quic.Config
+	dialer *shttp.Dialer
 }
 
 func (h *luaHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if req.Method == http.MethodGet {
 		w.WriteHeader(http.StatusOK)
 		io.Copy(w, strings.NewReader(h.state.GetString()))
+	} else if req.Method == http.MethodPut {
+		//lua_state := lua.NewState()
+		//msel := lua.NewMultiSelector(h.state)
+		//stats := lua.NewStats(lua_state)
+		//mact := extra.NewAutoConnectionTracer(stats)
+		//h.conf.Tracer = mact.TracerFunc
+
+		// TODO(thorben): fix upstream loading of string here
+		fn, err := h.state.Load(req.Body, "fnord")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+
+		h.state.Push(fn)
+		err = h.state.PCall(0, 0, nil)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		//h.dialer.Selector = extra.NewSelector(msel)
 	}
 }
 

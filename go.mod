@@ -10,7 +10,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.17
 	github.com/msteinert/pam v0.0.0-20190215180659-f29b9f28d6f9
 	github.com/netsec-ethz/rains v0.5.1-0.20231016120129-1e8d70642e60
-	github.com/netsys-lab/pan-lua v0.0.0-20240314125327-c67e05c442e4
+	github.com/netsys-lab/pan-lua v0.0.0-20240314132029-008c35b6dd05
 	github.com/pelletier/go-toml v1.9.5
 	github.com/quic-go/quic-go v0.41.0
 	github.com/scionproto/scion v0.9.1

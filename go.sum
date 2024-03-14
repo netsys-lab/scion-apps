@@ -286,6 +286,8 @@ github.com/netsys-lab/pan-lua v0.0.0-20240314122741-f3f7e536d56c h1:yFtx56pr11QW
 github.com/netsys-lab/pan-lua v0.0.0-20240314122741-f3f7e536d56c/go.mod h1:19xo6PC2k19Atb4oBQRzMhpYhVCqlELWRyf1tSZoSDw=
 github.com/netsys-lab/pan-lua v0.0.0-20240314125327-c67e05c442e4 h1:anK+amzisPu5usgM6hwaFT0B39HRXyILIKFY76J2Iys=
 github.com/netsys-lab/pan-lua v0.0.0-20240314125327-c67e05c442e4/go.mod h1:19xo6PC2k19Atb4oBQRzMhpYhVCqlELWRyf1tSZoSDw=
+github.com/netsys-lab/pan-lua v0.0.0-20240314132029-008c35b6dd05 h1:oaolnboe+HpQZMGW7jVJeki8ijPf+B5NhsNm4HVZYvo=
+github.com/netsys-lab/pan-lua v0.0.0-20240314132029-008c35b6dd05/go.mod h1:19xo6PC2k19Atb4oBQRzMhpYhVCqlELWRyf1tSZoSDw=
 github.com/nxadm/tail v1.4.4/go.mod h1:kenIhsEOeOJmVchQTgglprH7qJGnHDVpk1VPCcaMI8A=
 github.com/nxadm/tail v1.4.8 h1:nPr65rt6Y5JFSKQO7qToXr7pePgD6Gwiw05lkbyAQTE=
 github.com/nxadm/tail v1.4.8/go.mod h1:+ncqLTQzXmGhMZNUePPaPqPvBxHAIsmXswZKocGu+AU=
