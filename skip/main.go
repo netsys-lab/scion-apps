@@ -94,6 +94,7 @@ func main() {
 		bindAddress *net.TCPAddr
 		scriptFile  string
 		selector    pan.Selector
+		msel        *lua.LuaSelector
 		err         error
 		conf        = &quic.Config{}
 		lua_state   *lua.State
@@ -111,16 +112,17 @@ func main() {
 		}
 	} else {
 		lua_state = lua.NewState()
-		msel := lua.NewMultiSelector(lua_state)
+		msel = lua.NewMultiSelector(lua_state)
 		stats := lua.NewStats(lua_state)
 		mact := extra.NewAutoConnectionTracer(stats)
 		conf.Tracer = mact.TracerFunc
-		err = lua_state.LoadScript(scriptFile)
+		err = lua_state.DoFile(scriptFile)
 		if err != nil {
 			log.Fatal(err)
 		}
 
 		selector = extra.NewSelector(msel)
+		//selector.(*extra.AutoSelector).ErrorHandler = func(err error) { log.Println(err) }
 	}
 
 	transport, dialer := shttp.NewTransport(conf, nil)
@@ -140,6 +142,7 @@ func main() {
 		state:  lua_state,
 		conf:   conf,
 		dialer: dialer,
+		msel:   msel,
 	}
 
 	mux := http.NewServeMux()
@@ -304,31 +307,36 @@ type luaHandler struct {
 	state  *lua.State
 	conf   *quic.Config
 	dialer *shttp.Dialer
+	msel   *lua.LuaSelector
 }
 
 func (h *luaHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if req.Method == http.MethodGet {
-		w.WriteHeader(http.StatusOK)
-		io.Copy(w, strings.NewReader(h.state.GetString()))
+		b, err := h.msel.JSON([]byte{})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		} else {
+			w.WriteHeader(http.StatusOK)
+			w.Write(b)
+			w.Write([]byte{'\n'})
+		}
+	} else if req.Method == http.MethodPost {
+		buf := new(bytes.Buffer)
+		buf.ReadFrom(req.Body)
+		b, err := h.msel.JSON(buf.Bytes())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		} else {
+			w.WriteHeader(http.StatusOK)
+			w.Write(b)
+			w.Write([]byte{'\n'})
+		}
 	} else if req.Method == http.MethodPut {
-		//lua_state := lua.NewState()
-		//msel := lua.NewMultiSelector(h.state)
-		//stats := lua.NewStats(lua_state)
-		//mact := extra.NewAutoConnectionTracer(stats)
-		//h.conf.Tracer = mact.TracerFunc
-
-		// TODO(thorben): fix upstream loading of string here
-		fn, err := h.state.Load(req.Body, "fnord")
+		err := h.state.DoReader(req.Body, req.RemoteAddr)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
-
-		h.state.Push(fn)
-		err = h.state.PCall(0, 0, nil)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-		//h.dialer.Selector = extra.NewSelector(msel)
+		w.WriteHeader(http.StatusOK)
 	}
 }
 

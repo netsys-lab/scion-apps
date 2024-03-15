@@ -58,7 +58,7 @@ function panapi.Periodic(seconds)
       table.insert(fingerprints, fp)
    end
    table.sort(fingerprints)
-   panapi.Log(string.rep("=", 10), "Tick", string.rep("=", 10))
+   panapi.Log(string.rep("=", 10), "Tock", string.rep("=", 10))
    for i, fp in ipairs(fingerprints) do
       panapi.Log("Path", "[", fp, "]:", string.format("%.4f", (fp2bw[fp] or 0) / (fp2laddrs[fp] or 1)), string.rep("#", fp2laddrs[fp]))
    end
