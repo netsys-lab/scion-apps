@@ -94,7 +94,7 @@ func main() {
 		bindAddress *net.TCPAddr
 		scriptFile  string
 		selector    pan.Selector
-		msel        *lua.LuaSelector
+		lsel        *lua.LuaSelector
 		err         error
 		conf        = &quic.Config{}
 		lua_state   *lua.State
@@ -112,7 +112,7 @@ func main() {
 		}
 	} else {
 		lua_state = lua.NewState()
-		msel = lua.NewMultiSelector(lua_state)
+		lsel = lua.NewMultiSelector(lua_state)
 		stats := lua.NewStats(lua_state)
 		mact := extra.NewAutoConnectionTracer(stats)
 		conf.Tracer = mact.TracerFunc
@@ -120,9 +120,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-
-		selector = extra.NewSelector(msel)
-		//selector.(*extra.AutoSelector).ErrorHandler = func(err error) { log.Println(err) }
+		selector = extra.NewSelector(lsel)
 	}
 
 	transport, dialer := shttp.NewTransport(conf, nil)
@@ -138,15 +136,13 @@ func main() {
 	policyHandler := &policyHandler{
 		output: dialer,
 	}
-	luaHandler := &luaHandler{
-		state:  lua_state,
-		conf:   conf,
-		dialer: dialer,
-		msel:   msel,
-	}
 
 	mux := http.NewServeMux()
 	apiMux := http.NewServeMux()
+
+	luaMux := NewLuaMux(lua_state, lsel)
+	apiMux.Handle("/lua/", http.StripPrefix("/lua", luaMux))
+
 	apiMux.HandleFunc("/skip.pac", handleWPAD)
 	apiMux.HandleFunc("/scionHosts", handleHostListRequest)
 	apiMux.HandleFunc("/pathUsage", handlePathUsageRequest)
@@ -155,7 +151,6 @@ func main() {
 
 	apiMux.HandleFunc("/resolve", handleHostResolutionRequest)
 	apiMux.Handle("/setPolicy", policyHandler)
-	apiMux.Handle("/lua", luaHandler)
 
 	mux.Handle("localhost/", apiMux)
 	if bindAddress.IP != nil {
@@ -303,41 +298,48 @@ func isSCIONEnabled(ctx context.Context, host string) (bool, error) {
 	return true, nil
 }
 
-type luaHandler struct {
-	state  *lua.State
-	conf   *quic.Config
-	dialer *shttp.Dialer
-	msel   *lua.LuaSelector
-}
+func NewLuaMux(lstate *lua.State, lsel *lua.LuaSelector) *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(res http.ResponseWriter, req *http.Request) {
+		res.Write([]byte("Lua API\n"))
+	})
+	mux.HandleFunc("/script", func(res http.ResponseWriter, req *http.Request) {
+		if req.Method == http.MethodGet {
+			res.WriteHeader(http.StatusOK)
+			io.Copy(res, strings.NewReader(lstate.GetString()))
+		} else if req.Method == http.MethodPut || req.Method == http.MethodPost {
+			err := lstate.DoReader(req.Body, req.RemoteAddr)
+			if err != nil {
+				http.Error(res, err.Error(), http.StatusInternalServerError)
+			}
+			res.WriteHeader(http.StatusOK)
+		}
+	})
+	mux.HandleFunc("/json", func(res http.ResponseWriter, req *http.Request) {
+		if req.Method == http.MethodGet {
+			b, err := lsel.JSON([]byte{})
+			if err != nil {
+				http.Error(res, err.Error(), http.StatusInternalServerError)
+			} else {
+				res.WriteHeader(http.StatusOK)
+				res.Write(b)
+				res.Write([]byte{'\n'})
+			}
+		} else if req.Method == http.MethodPost {
+			buf := new(bytes.Buffer)
+			buf.ReadFrom(req.Body)
+			b, err := lsel.JSON(buf.Bytes())
+			if err != nil {
+				http.Error(res, err.Error(), http.StatusInternalServerError)
+			} else {
+				res.WriteHeader(http.StatusOK)
+				res.Write(b)
+				res.Write([]byte{'\n'})
+			}
+		}
+	})
+	return mux
 
-func (h *luaHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	if req.Method == http.MethodGet {
-		b, err := h.msel.JSON([]byte{})
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		} else {
-			w.WriteHeader(http.StatusOK)
-			w.Write(b)
-			w.Write([]byte{'\n'})
-		}
-	} else if req.Method == http.MethodPost {
-		buf := new(bytes.Buffer)
-		buf.ReadFrom(req.Body)
-		b, err := h.msel.JSON(buf.Bytes())
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		} else {
-			w.WriteHeader(http.StatusOK)
-			w.Write(b)
-			w.Write([]byte{'\n'})
-		}
-	} else if req.Method == http.MethodPut {
-		err := h.state.DoReader(req.Body, req.RemoteAddr)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-		w.WriteHeader(http.StatusOK)
-	}
 }
 
 type policyHandler struct {
