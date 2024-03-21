@@ -72,6 +72,21 @@ func newPathStatsDB() pathStatsDB {
 	}
 }
 
+// TODO: handle paths being down
+func (s *pathStatsDB) GetLatencies(dst scionAddr, fp PathFingerprint) (latencies StatsLatencySamples) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	destinationstats, ok := s.destinations[dst]
+	if !ok {
+		return nil
+	}
+	latencysamples, ok := destinationstats.Latency[fp]
+	if !ok {
+		return nil
+	}
+	return latencysamples
+}
+
 func (s *pathStatsDB) RecordLatency(dst scionAddr, p PathFingerprint, latency time.Duration) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
