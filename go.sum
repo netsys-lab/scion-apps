@@ -225,8 +225,6 @@ github.com/mwitkow/go-conntrack v0.0.0-20161129095857-cc309e4a2223/go.mod h1:qRW
 github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f/go.mod h1:qRWi+5nqEBWmkhHvq77mSJWrCKwh8bxhgT7d/eI7P4U=
 github.com/netsec-ethz/rains v0.5.1-0.20231016120129-1e8d70642e60 h1:fl57Up5eDERzluGu+7zbwvs/Tm5P+95Ufmc9fZigW9U=
 github.com/netsec-ethz/rains v0.5.1-0.20231016120129-1e8d70642e60/go.mod h1:eklBGRlZils9b2CojQcOszXUPHLgFn+KvIxZDUU+VQ4=
-github.com/netsys-lab/pan-lua v0.1.0 h1:vd7bFKmLQSjdSsZ4KEugZ4wUBUj1rOi+QGpEFnmu3YY=
-github.com/netsys-lab/pan-lua v0.1.0/go.mod h1:gcHCIZnZb3vUBrWv6KrIxCRsBcTcsIzzoRiIDOagNY0=
 github.com/onsi/ginkgo/v2 v2.9.5 h1:+6Hr4uxzP4XIUyAkg61dWBw8lb/gc4/X5luuxN/EC+Q=
 github.com/onsi/ginkgo/v2 v2.9.5/go.mod h1:tvAoo1QUJwNEU2ITftXTpR7R1RbCzoZUOs3RonqW57k=
 github.com/onsi/gomega v1.27.6 h1:ENqfyGeS5AX/rlXDd/ETokDz93u0YufY1Pgxuy/PvWE=

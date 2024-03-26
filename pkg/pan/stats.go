@@ -61,6 +61,8 @@ type pathStatsDB struct {
 	// TODO: cleanup of this map on connection end, reference counted handle?
 	destinations map[scionAddr]DestinationStats
 
+	lastrtts map[PathFingerprint]time.Duration
+
 	notifier pathDownNotifier
 }
 
@@ -69,22 +71,15 @@ func newPathStatsDB() pathStatsDB {
 		paths:        make(map[PathFingerprint]PathStats),
 		interfaces:   make(map[PathInterface]PathInterfaceStats),
 		destinations: make(map[scionAddr]DestinationStats),
+		lastrtts:     make(map[PathFingerprint]time.Duration),
 	}
 }
 
 // TODO: handle paths being down
-func (s *pathStatsDB) GetLatencies(dst scionAddr, fp PathFingerprint) (latencies StatsLatencySamples) {
+func (s *pathStatsDB) GetRTT() map[PathFingerprint]time.Duration {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	destinationstats, ok := s.destinations[dst]
-	if !ok {
-		return nil
-	}
-	latencysamples, ok := destinationstats.Latency[fp]
-	if !ok {
-		return nil
-	}
-	return latencysamples
+	return s.lastrtts
 }
 
 func (s *pathStatsDB) RecordLatency(dst scionAddr, p PathFingerprint, latency time.Duration) {
@@ -123,6 +118,7 @@ func (s *pathStatsDB) LowestLatency(dst scionAddr, paths []*Path) int {
 		latency := maxDuration
 		if len(latencyStats) > 0 && latencyStats[0].Time.After(down) {
 			latency = latencyStats[0].Value
+			s.lastrtts[p.Fingerprint] = latency
 		}
 		if latency < bestLatency {
 			best = i

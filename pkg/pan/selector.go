@@ -171,14 +171,16 @@ func (s *PingingSelector) Refresh(paths []*Path) {
 	s.current = stats.LowestLatency(s.remote, s.paths)
 }
 
-func (s *PingingSelector) GetRTT(remote UDPAddr, fp PathFingerprint) *time.Duration {
+func (s *PingingSelector) GetRTT() map[PathFingerprint]time.Duration {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	latencies := stats.GetLatencies(remote.scionAddr(), fp)
-	if len(latencies) == 0 {
-		return nil
-	}
-	return &latencies[0].Value
+	return stats.GetRTT()
+}
+
+func (s *PingingSelector) Debug() string {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return fmt.Sprintf("%+v", stats)
 }
 
 func (s *PingingSelector) PathDown(pf PathFingerprint, pi PathInterface) {

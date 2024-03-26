@@ -89,6 +89,59 @@ type skipPACTemplateParams struct {
 	SCIONHosts   []string
 }
 
+type hackselector struct {
+	pingsel     *pan.PingingSelector
+	luaSelector extra.Selector
+
+	multisel *lua.LuaSelector
+	luaState *lua.State
+}
+
+func newhacksel(conf *quic.Config) *hackselector {
+	pingsel := &pan.PingingSelector{
+		Interval: 2 * time.Second,
+		Timeout:  time.Second,
+	}
+	pingsel.SetActive(42)
+	luaState := lua.NewState()
+	multisel := lua.NewMultiSelector(luaState)
+	stats := lua.NewStats(luaState)
+	mact := extra.NewAutoConnectionTracer(stats)
+	conf.Tracer = mact.TracerFunc
+	luaSelector := extra.NewSelector(multisel)
+	return &hackselector{
+		pingsel,
+		luaSelector,
+		multisel,
+		luaState,
+	}
+}
+
+func (h *hackselector) Initialize(local, remote pan.UDPAddr, paths []*pan.Path) {
+	h.pingsel.Initialize(local, remote, paths)
+	h.luaSelector.Initialize(local, remote, paths)
+}
+
+func (h *hackselector) Path() *pan.Path {
+	h.pingsel.Path()
+	return h.luaSelector.Path()
+}
+
+func (h *hackselector) Refresh(paths []*pan.Path) {
+	h.pingsel.Refresh(paths)
+	h.luaSelector.Refresh(paths)
+}
+
+func (h *hackselector) PathDown(pf pan.PathFingerprint, pi pan.PathInterface) {
+	h.pingsel.PathDown(pf, pi)
+	h.luaSelector.PathDown(pf, pi)
+}
+
+func (h *hackselector) Close() error {
+	h.pingsel.Close()
+	return h.luaSelector.Close()
+}
+
 func main() {
 	var (
 		bindAddress *net.TCPAddr
@@ -111,6 +164,7 @@ func main() {
 			log.Fatal(err)
 		}
 	} else {
+
 		lua_state = lua.NewState()
 		lsel = lua.NewMultiSelector(lua_state)
 		stats := lua.NewStats(lua_state)

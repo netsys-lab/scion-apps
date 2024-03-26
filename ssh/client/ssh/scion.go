@@ -17,6 +17,7 @@ package ssh
 import (
 	"context"
 	"crypto/tls"
+	"log"
 	"net/netip"
 	"time"
 
@@ -33,7 +34,7 @@ func dialSCION(ctx context.Context,
 	policy pan.Policy,
 	selector string,
 	config *ssh.ClientConfig) (*ssh.Client, error) {
-
+	log.Println("Dialing SCION")
 	remote, err := pan.ResolveUDPAddr(ctx, addr)
 	if err != nil {
 		return nil, err
@@ -60,6 +61,16 @@ func dialSCION(ctx context.Context,
 	conn, nc, rc, err := ssh.NewClientConn(stream, addr, config)
 	if err != nil {
 		return nil, err
+	}
+	switch s := sel.(type) {
+	case *pan.PingingSelector:
+		go func() {
+			t := time.NewTicker(time.Millisecond * 100)
+			for {
+				log.Println(s.Debug())
+				<-t.C
+			}
+		}()
 	}
 	return ssh.NewClient(conn, nc, rc), nil
 }
