@@ -1,0 +1,70 @@
+[
+  {
+    "IA": "16-ffaa:0:1001",
+    "GramsPerMBIT": 10,
+    "Comment": "AWS Frankfurt"
+  },
+  {
+    "IA": "16-ffaa:0:1002",
+   "GramsPerMBIT": 10,
+   "Comment": "AWS Ireland"
+  },
+  {
+    "IA": "16-ffaa:0:1003",
+    "GramsPerMBIT": 10,
+    "Comment": "AWS Virginia"
+  },
+  {
+    "IA": "16-ffaa:0:1004",
+    "GramsPerMBIT": 10,
+    "Comment": "AWS Ohio"
+  },
+  {
+    "IA": "17-ffaa:0:1101",
+    "GramsPerMBIT": 50,
+    "Comment": "Swisscomm"
+  },
+  {
+    "IA": "17-ffaa:0:1108",
+    "GramsPerMBIT": 10,
+    "Comment": "SWITCH"
+  },
+  {
+    "IA": "18-ffaa:0:1201",
+    "GramsPerMBIT": 10,
+    "Comment": "CMU"
+  },
+  {
+    "IA": "18-ffaa:0:1206",
+    "GramsPerMBIT": 10,
+    "Comment": "CMU AP"
+  },
+  {
+    "IA": "18-ffaa:1:111f",
+    "GramsPerMBIT": 10
+  },
+  {
+    "IA": "19-ffaa:0:1301",
+    "GramsPerMBIT": 100,
+    "Comment": "Magdeburg Core"
+  },
+  {
+    "IA": "19-ffaa:0:1303",
+    "GramsPerMBIT": 10,
+    "Comment": "Magdeburg AP"
+  },
+  {
+    "IA": "19-ffaa:0:1305",
+    "GramsPerMBIT": -5,
+    "Comment": "SIDN Labs"
+  },
+  {
+    "IA": "19-ffaa:0:130b",
+    "GramsPerMBIT": 20,
+    "Comment": "DFN"
+  },
+  {
+    "IA": "19-ffaa:1:c3f",
+    "GramsPerMBIT": 10
+  }
+]
