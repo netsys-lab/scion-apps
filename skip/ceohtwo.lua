@@ -6,7 +6,7 @@ tick = 0
 -- global table to keep function call statistics
 calls = {
    cur = {},
-   old = {},
+   old = {}
 }
 
 -- map remote address to path fingerprints
@@ -48,117 +48,133 @@ laddr2switchtime = {}
 -- map local address to transferred bytes on the current path
 laddr2bytes_on_path = {}
 
+-- map path fingerprint to path lenght
+fp2length = {}
 
-fp2lengths = {}
-
-
+-- which relative CO2 penalty is associated with which IA
 ia2co2 = {}
-fp2co2 = {}
-
+-- which comment is associated with which IA
 ia2comment = {}
 
+-- which accumulated CO2 penalty is associated with which path fingerprint
+fp2co2 = {}
+
+-- sorted list of path fingerprints according to last path selection
 lastfps = {}
 
+-- which strategy to pick first? (has to be a field method in the "strategies" table below)
+settings = {
+   strategy = "lowestCO2fps"
+}
+
+-- helper function to calculate cumulated CO2 penalty for path fingerprint
 function calcfp2co2(fp)
-    local result = 0
-    for i, asentry in ipairs(fp2path[fp].Metadata.Interfaces) do
-        result = result + (ia2co2[asentry.IA] or 0)
-    end
-    fp2co2[fp] = result
-    return result
+   local result = 0
+   for i, asentry in ipairs(fp2path[fp].Metadata.Interfaces) do
+      result = result + (ia2co2[asentry.IA] or 0)
+   end
+   fp2co2[fp] = result
+   return result
 end
 
-function shortestfps(raddr)
-    local fingerprints = {}
-    for _, fp in ipairs(raddr2fps[raddr]) do
-        table.insert(fingerprints, fp)
-    end
-    table.sort(
-        fingerprints,
-        function(fp_a, fp_b)
-            return (fp2lengths[fp_a] or 0) < (fp2lengths[fp_b] or 0)
-        end)
-    return fingerprints
-end
-
-
-function lowestCO2fps(raddr)
-    local fingerprints = {}
-    for _, fp in ipairs(raddr2fps[raddr]) do
-        table.insert(fingerprints, fp)
-    end
-    table.sort(
-        fingerprints,
-        function(fp_a, fp_b)
-            return (fp2co2[fp_a] or 0) < (fp2co2[fp_b] or 0)
-        end)
-    return fingerprints
-end
-
-function balancedCO2fps(raddr)
-    local fingerprints = {}
-    for _, fp in ipairs(raddr2fps[raddr]) do
-        table.insert(fingerprints, fp)
-    end
-    table.sort(
-        fingerprints,
-        function(fp_a, fp_b)
-            return (fp2co2[fp_a] or 0) + 6 * fp2lengths[fp_a] < (fp2co2[fp_b] or 0) + 6 * fp2lengths[fp_b]
-        end)
-    return fingerprints
-end
-
+-- table with different functions to rank path fingerprints according to selection strategy
+strategies = {
+   shortestfps = function(raddr)
+      local fingerprints = {}
+      for _, fp in ipairs(raddr2fps[raddr]) do
+         table.insert(fingerprints, fp)
+      end
+      table.sort(fingerprints, function(fp_a, fp_b)
+         return (fp2length[fp_a] or 0) < (fp2length[fp_b] or 0)
+      end)
+      return fingerprints
+   end,
+   lowestCO2fps = function(raddr)
+      local fingerprints = {}
+      for _, fp in ipairs(raddr2fps[raddr]) do
+         table.insert(fingerprints, fp)
+      end
+      table.sort(fingerprints, function(fp_a, fp_b)
+         return (fp2co2[fp_a] or 0) < (fp2co2[fp_b] or 0)
+      end)
+      return fingerprints
+   end,
+   balancedCO2fps = function(raddr)
+      local fingerprints = {}
+      for _, fp in ipairs(raddr2fps[raddr]) do
+         table.insert(fingerprints, fp)
+      end
+      table.sort(fingerprints, function(fp_a, fp_b)
+         -- Hardcoded "balancing strategy" taking into account path lengths. Somewhat hand-tuned for demo with hand-picked CO2 emission values between CMU and MD
+         return (fp2co2[fp_a] or 0) + 6 * fp2length[fp_a] < (fp2co2[fp_b] or 0) + 6 * fp2length[fp_b]
+      end)
+      return fingerprints
+   end
+}
 
 -- gets called every second or so
 function panapi.Periodic(seconds)
-    tick = tick + 1
+   tick = tick + 1
 end
 
+-- main entry point to manipulate script state via JSON
+-- Lua tables that get returned here are turned into JSON response
 function panapi.JSON(args)
-    for _, entry in ipairs(args) do
-        local ia = entry["IA"]
-        ia2co2[ia] = entry["GramsPerMBIT"]
-        ia2comment[ia] = entry["Comment"]
-    end
-    for fp, _ in pairs(fp2path) do
-        local co2 = calcfp2co2(fp)
-        fp2co2[fp] = co2
-    end
-    --[[local out = {}
+   for _, entry in ipairs(args) do
+      local ia = entry["IA"]
+      ia2co2[ia] = entry["GramsPerMBIT"]
+      ia2comment[ia] = entry["Comment"]
+   end
+   for fp, _ in pairs(fp2path) do
+      local co2 = calcfp2co2(fp)
+      fp2co2[fp] = co2
+   end
+   if strategies[args.strategy] ~= nil then
+      panapi.Log("setting strategy to", args.strategy)
+      settings.strategy = args.strategy
+   end
+   --[[local out = {}
     for _, fp in ipairs(lastfps) do
         table.insert(out, fp2info(fp))
     end
     return out]]
-    return fp2info(lastfps[1])
+   return {settings, fp2info(lastfps[1])}
 end
 
+-- helper function to extract information from a path fingerprint
 function fp2info(fp)
-    local entry = {}
-    entry.Fingerprint = fp
-    entry.CO2 = fp2co2[fp]
-    entry.ASPath = ""
-    local ifaces = (((fp2path[fp] or {}).Metadata or {}).Interfaces or {})
-    entry.Hops = #ifaces
-    for i, iface in ipairs(ifaces) do
-        if math.fmod(i, 2) == 1 or i == #ifaces then
-            local spacer = " -> "
-            if i == #ifaces then
-                spacer = ""
-            end
-            entry.ASPath = entry.ASPath .. tostring(ia2comment[iface.IA] or iface.IA) .. spacer
-        end
-    end
-    return entry
+   local entry = {}
+   entry.Fingerprint = fp
+   entry.CO2 = fp2co2[fp]
+   entry.ASPath = ""
+
+   -- usually the following is sufficient
+   -- local ifaces = fp2path[fp].Metadata.Interfaces
+   -- but we need to prevent runtime errors in case of fp2path[fp] == nil or fp2path[fp].Metadata = nil, etc
+   local ifaces = (((fp2path[fp] or {}).Metadata or {}).Interfaces or {})
+   entry.Hops = #ifaces
+   for i, iface in ipairs(ifaces) do
+      if math.fmod(i, 2) == 1 or i == #ifaces then
+         local spacer = " → "
+         if i == #ifaces then
+            spacer = ""
+         end
+         entry.ASPath = entry.ASPath .. tostring(ia2comment[iface.IA] or iface.IA) .. spacer
+      end
+   end
+   return entry
 end
 
 -- gets called when a set of paths to addr is known
 function panapi.Initialize(prefs, laddr, raddr, ps)
    panapi.Log("New connection [" .. laddr, "|", raddr .. "]")
    raddr2fps[raddr] = raddr2fps[raddr] or {}
-   table.sort(ps, function(a, b) return a.Fingerprint < b.Fingerprint end)
+   table.sort(ps, function(a, b)
+      return a.Fingerprint < b.Fingerprint
+   end)
    for i, path in ipairs(ps) do
       local fp = path.Fingerprint
-      fp2lengths[fp] = #path.Metadata.Interfaces
+      fp2length[fp] = #path.Metadata.Interfaces
       fp2path[fp] = path
       fp2id[fp] = i
       fp2laddrs[fp] = fp2laddrs[fp] or 0
@@ -189,12 +205,14 @@ end
 -- gets called for every packet
 -- implementation needs to be efficient
 function panapi.Path(laddr, raddr)
-    if #raddr2fps[raddr] > 0 then
-        lastfps = balancedCO2fps(raddr)
-        --lastfps = shortestfps(raddr)
-        --lastfps = lowestCO2fps(raddr)
-        return fp2path[lastfps[1]]
-    end
+   if #raddr2fps[raddr] > 0 then
+      local strategy = strategies[settings.strategy]
+      lastfps = strategy(raddr)
+      -- lastfps = strategies.balancedCO2fps(raddr)
+      -- lastfps = strategies.shortestfps(raddr)
+      -- lastfps = strategies.lowestCO2fps(raddr)
+      return fp2path[lastfps[1]]
+   end
 end
 
 -- gets called whenever a path disappears(?)
@@ -206,40 +224,38 @@ function panapi.PathDown(laddr, raddr, fp, pi)
    fp2bw[fp] = nil
    fp2laddrs[fp] = 0
 
-   for i,fp2 in ipairs(raddr2fps[raddr]) do
+   for i, fp2 in ipairs(raddr2fps[raddr]) do
       if fp == fp2 then
          table.remove(raddr2fps[raddr], i)
       end
    end
-   for laddr,fp2 in pairs(laddr2fp) do
+   for laddr, fp2 in pairs(laddr2fp) do
       if fp == fp2 then
          laddr2fp[laddr] = nil
       end
    end
-       
---   shutdown = tick + 10
+
+   --   shutdown = tick + 10
 end
 
 function panapi.Refresh(laddr, raddr, ps)
    panapi.Log("Refresh", raddr, ps)
    panapi.Initialize(nil, laddr, raddr, ps)
---   shutdown = tick + 10
+   --   shutdown = tick + 10
 end
-
 
 function panapi.Close(laddr, raddr)
    panapi.Log("Close", laddr, raddr, laddr2fp[laddr])
-   --panapi.Log(tprint(fp2bw))
-   --panapi.Log(tprint(fp2laddrs))
+   -- panapi.Log(tprint(fp2bw))
+   -- panapi.Log(tprint(fp2laddrs))
    local fp = laddr2fp[laddr]
    laddr2fp[laddr] = nil
    if fp ~= nil then
       fp2laddrs[fp] = (fp2laddrs[fp] or 1) - 1
    end
    laddr2prefs[laddr] = nil
-   --shutdown = tick + 10
+   -- shutdown = tick + 10
 end
-
 
 function stats.UpdatedMetrics(laddr, raddr, rttStats, cwnd, bytesInFlight, packetsInFlight)
    calls.cur.UpdatedMetrics = (calls.cur.UpdatedMetrics or 0) + 1
@@ -253,10 +269,10 @@ function stats.UpdatedMetrics(laddr, raddr, rttStats, cwnd, bytesInFlight, packe
          fp2minrtt[fp] = math.min((fp2minrtt[fp] or rttStats.LatestRTT), rttStats.LatestRTT)
       end
    end
---   fp2last[fp] = tick
+   --   fp2last[fp] = tick
    fp2rtt[fp] = rttStats.LatestRTT
 
---   panapi.Log("\n", tprint(rttStats, 1))
+   --   panapi.Log("\n", tprint(rttStats, 1))
 end
 
 function stats.SentPacket(laddr, raddr, size)
@@ -264,10 +280,9 @@ function stats.SentPacket(laddr, raddr, size)
    laddr2bytes_on_path[laddr] = (laddr2bytes_on_path[laddr] or 0) + size
 end
 
-
 function diffcallstats()
    local d = {}
-   for k,v in pairs(calls.cur) do
+   for k, v in pairs(calls.cur) do
       local old = calls.old[k]
       if v ~= old then
          d[k] = v - (old or 0)
@@ -279,7 +294,7 @@ end
 
 function abscallstats()
    local d = {}
-   for k,v in pairs(calls.cur) do
+   for k, v in pairs(calls.cur) do
       if v ~= 0 then
          d[k] = v
       end
@@ -289,11 +304,11 @@ end
 
 function stats.TracerForConnection(id, p, odcid)
    calls.cur.TracerForConnection = (calls.cur.TracerForConnection or 0) + 1
-   --panapi.Log("id:", id, "perspective", p, "odcid", odcid)
+   -- panapi.Log("id:", id, "perspective", p, "odcid", odcid)
 end
 function stats.StartedConnection(laddr, raddr, srcid, dstid)
    calls.cur.StartedConnection = (calls.cur.StartedConnection or 0) + 1
-   
+
 end
 function stats.NegotiatedVersion(laddr, raddr)
    calls.cur.NegotiatedVersion = (calls.cur.NegotiatedVersion or 0) + 1
@@ -391,9 +406,13 @@ end
 -- 
 -- Print contents of `tbl`, with indentation.
 -- `indent` sets the initial level of indentation.
-function tprint (tbl, indent, cutoff)
-   if not indent then indent = 0 end
-   if not cutoff then cutoff = 3 end
+function tprint(tbl, indent, cutoff)
+   if not indent then
+      indent = 0
+   end
+   if not cutoff then
+      cutoff = 3
+   end
    if type(tbl) == "table" then
       local s = ""
       for k, v in pairs(tbl) do
@@ -401,10 +420,10 @@ function tprint (tbl, indent, cutoff)
          s = s .. formatting
          if type(v) == "table" then
             if indent > cutoff then
-               --print(formatting)
+               -- print(formatting)
                s = s .. "[cutoff]\n"
-            else 
-               s = s .. "\n" .. tprint(v, indent+1)
+            else
+               s = s .. "\n" .. tprint(v, indent + 1)
             end
          else
             s = s .. tprint(v) .. "\n"
@@ -416,12 +435,11 @@ function tprint (tbl, indent, cutoff)
    end
 end
 
-
 -- recursively perform a deep copy of a table
 function copy(thing)
    if type(thing) == "table" then
       local r = {}
-      for k,v in pairs(thing) do
+      for k, v in pairs(thing) do
          r[k] = copy(v)
       end
       return r
@@ -430,14 +448,13 @@ function copy(thing)
    end
 end
 
-
 -- return a new thing containing everything about thing1 that is different from thing2
 function diff(thing1, thing2)
    if type(thing1) == "table" then
       local thing = {}
       if type(thing2) == "table" then
          local thing = {}
-         for k,v in pairs(thing1) do
+         for k, v in pairs(thing1) do
             thing[k] = diff(thing1[k], thing2[k])
          end
          return thing
