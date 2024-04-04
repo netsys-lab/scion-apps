@@ -1,5 +1,4 @@
-print("HELLO LUA")
-
+panapi.Log("Default Lua script loaded")
 
 -- global variable to track "time"
 tick = 0
@@ -66,15 +65,6 @@ function panapi.Periodic(seconds)
          return (fp2minrtt[fp_a] or 0) < (fp2minrtt[fp_b] or 0)
       end
    )
-   panapi.Log(string.rep("=", 10), "Tick", string.rep("=", 10))
-   for i, fp in ipairs(fingerprints) do
-   --   panapi.Log("Path", "[", fp, "]:", string.format("%.4f", (fp2bw[fp] or 0) / (fp2laddrs[fp] or 1)), string.rep("#", fp2laddrs[fp]))
-      local minrtt = fp2minrtt[fp]
-      if rtt ~= nil then
-         panapi.Log("Path", "[", fp, "]:", string.format("%.4f", minrtt))
-      end
-   end
-
    if shutdown ~= 0 then
       panapi.Log("shutting down in", shutdown - tick, "seconds")
       if tick > shutdown then
@@ -214,7 +204,7 @@ function panapi.Path(laddr, raddr)
    if #raddr2fps[raddr] > 0 then
       local oldfp = laddr2fp[laddr]
       local p = fp2path[oldfp]
-      local profile = laddr2prefs[laddr]["ConnCapacityProfile"]
+      local profile = (laddr2prefs[laddr] or {})["ConnCapacityProfile"]
       local now = panapi.Now()
       if p == nil then
          p = nextScavengePath(raddr)

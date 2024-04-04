@@ -1,4 +1,4 @@
-print("HELLO LUA")
+panapi.Log("Loaded CO2 optimization script")
 
 -- global variable to track "time"
 tick = 0
@@ -64,7 +64,7 @@ lastfps = {}
 
 -- which strategy to pick first? (has to be a field method in the "strategies" table below)
 settings = {
-   strategy = "lowestCO2fps"
+   strategy = "shortestPath"
 }
 
 -- helper function to calculate cumulated CO2 penalty for path fingerprint
@@ -79,7 +79,8 @@ end
 
 -- table with different functions to rank path fingerprints according to selection strategy
 strategies = {
-   shortestfps = function(raddr)
+   -- return sorted 
+   shortestPath = function(raddr)
       local fingerprints = {}
       for _, fp in ipairs(raddr2fps[raddr]) do
          table.insert(fingerprints, fp)
@@ -89,7 +90,7 @@ strategies = {
       end)
       return fingerprints
    end,
-   lowestCO2fps = function(raddr)
+   lowestCO2 = function(raddr)
       local fingerprints = {}
       for _, fp in ipairs(raddr2fps[raddr]) do
          table.insert(fingerprints, fp)
@@ -99,13 +100,13 @@ strategies = {
       end)
       return fingerprints
    end,
-   balancedCO2fps = function(raddr)
+   balancedCO2 = function(raddr)
       local fingerprints = {}
       for _, fp in ipairs(raddr2fps[raddr]) do
          table.insert(fingerprints, fp)
       end
       table.sort(fingerprints, function(fp_a, fp_b)
-         -- Hardcoded "balancing strategy" taking into account path lengths. Somewhat hand-tuned for demo with hand-picked CO2 emission values between CMU and MD
+         -- "balancing strategy" taking into account path lengths. Currently hand-tuned for demo with hand-picked CO2 emission values between CMU and MD
          return (fp2co2[fp_a] or 0) + 6 * fp2length[fp_a] < (fp2co2[fp_b] or 0) + 6 * fp2length[fp_b]
       end)
       return fingerprints
@@ -172,6 +173,7 @@ function panapi.Initialize(prefs, laddr, raddr, ps)
    table.sort(ps, function(a, b)
       return a.Fingerprint < b.Fingerprint
    end)
+   panapi.Log("Got", #ps, "paths")
    for i, path in ipairs(ps) do
       local fp = path.Fingerprint
       fp2length[fp] = #path.Metadata.Interfaces
@@ -179,7 +181,7 @@ function panapi.Initialize(prefs, laddr, raddr, ps)
       fp2id[fp] = i
       fp2laddrs[fp] = fp2laddrs[fp] or 0
       calcfp2co2(fp)
-      panapi.Log("Path", i, fp)
+      --panapi.Log("Path", i, fp)
       local exists = false
       for i, fp2 in ipairs(raddr2fps[raddr]) do
          if fp == fp2 then
@@ -191,7 +193,7 @@ function panapi.Initialize(prefs, laddr, raddr, ps)
          table.insert(raddr2fps[raddr], fp)
       end
    end
-   panapi.SetPreferences(prefs, laddr, raddr)
+   --panapi.SetPreferences(prefs, laddr, raddr)
 end
 
 function panapi.SetPreferences(prefs, laddr, raddr)
@@ -208,9 +210,9 @@ function panapi.Path(laddr, raddr)
    if #raddr2fps[raddr] > 0 then
       local strategy = strategies[settings.strategy]
       lastfps = strategy(raddr)
-      -- lastfps = strategies.balancedCO2fps(raddr)
-      -- lastfps = strategies.shortestfps(raddr)
-      -- lastfps = strategies.lowestCO2fps(raddr)
+      -- lastfps = strategies.balancedCO2(raddr)
+      -- lastfps = strategies.shortest(raddr)
+      -- lastfps = strategies.lowestCO2(raddr)
       return fp2path[lastfps[1]]
    end
 end
@@ -245,7 +247,7 @@ function panapi.Refresh(laddr, raddr, ps)
 end
 
 function panapi.Close(laddr, raddr)
-   panapi.Log("Close", laddr, raddr, laddr2fp[laddr])
+   --panapi.Log("Close", laddr, raddr, laddr2fp[laddr])
    -- panapi.Log(tprint(fp2bw))
    -- panapi.Log(tprint(fp2laddrs))
    local fp = laddr2fp[laddr]
