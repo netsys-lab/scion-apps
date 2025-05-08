@@ -37,6 +37,8 @@ import (
 
 	"github.com/netsec-ethz/scion-apps/pkg/pan"
 	"github.com/netsec-ethz/scion-apps/pkg/shttp"
+	"github.com/netsec-ethz/scion-apps/pkg/shttp3"
+	"github.com/quic-go/quic-go/http3"
 )
 
 const (
@@ -63,6 +65,7 @@ var (
 	body             string
 	bench            bool
 	benchN           int
+	sni              string
 	benchC           int
 	isjson           = flag.Bool("json", true, "Send the data as a JSON object")
 	method           = flag.String("method", "GET", "HTTP method")
@@ -72,6 +75,7 @@ var (
 )
 
 func init() {
+	flag.StringVar(&sni, "servername", "", "SNI servername to use in TLSConfig for handshake")
 	flag.BoolVar(&interactive, "interactive", false, "Prompt user for interactive path selection")
 	flag.StringVar(&sequence, "sequence", "", "Sequence of space separated hop predicates to specify path")
 	flag.StringVar(&preference, "preference", "", "Preference sorting order for paths. "+
@@ -107,7 +111,16 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defaultSetting.Transport, _ = shttp.NewTransport(nil, policy)
+	defaultSetting.Transport = &http3.RoundTripper{
+		Dial: (&shttp3.Dialer{
+			Policy: policy,
+		}).Dial,
+	}
+
+	if sni != "" {
+		transport := defaultSetting.Transport.(*http3.RoundTripper)
+		transport.TLSClientConfig = &tls.Config{ServerName: sni}
+	}
 }
 
 func parsePrintOption(s string) {
